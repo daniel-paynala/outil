@@ -72,6 +72,10 @@ export default function CardDrawer({
   }, [onClose]);
 
   async function patch(body: Record<string, unknown>) {
+    if (!detail) return;
+    const prev = detail;
+    // Optimistic update — reflect change instantly
+    setDetail({ ...detail, ...body } as CardDetail);
     setSaving(true);
     const res = await apiFetch(`/api/cards/${cardId}`, {
       method: "PATCH",
@@ -82,6 +86,9 @@ export default function CardDrawer({
       const updated = (await res.json()) as CardSummary;
       setDetail((d) => (d ? { ...d, ...updated } : d));
       onUpdated(updated);
+    } else {
+      // Revert on failure
+      setDetail(prev);
     }
   }
 
@@ -237,11 +244,7 @@ export default function CardDrawer({
             <FieldRow icon={Calendar} label="Échéance">
               <input
                 type="date"
-                value={
-                  detail.due_date
-                    ? new Date(detail.due_date).toISOString().slice(0, 10)
-                    : ""
-                }
+                value={detail.due_date ? detail.due_date.slice(0, 10) : ""}
                 onChange={(e) => patch({ due_date: e.target.value || null })}
                 className="rounded border border-[var(--border)] bg-[var(--background)] px-2 py-1 text-sm"
               />
