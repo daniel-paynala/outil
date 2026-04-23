@@ -263,3 +263,35 @@ export type SearchResults = {
   files: (SearchResult & { mime_type: string | null })[];
   warning?: string | null;
 };
+
+export type GithubPlatform = "mobile" | "web" | "api" | "other";
+
+export type GithubRepo = {
+  id: string;
+  project_id: string;
+  full_name: string;
+  platform: GithubPlatform;
+  default_branch: string;
+  description: string | null;
+  linked_by: string;
+  last_synced_at: string | null;
+  created_at: string;
+  updated_at: string;
+  commits_count?: number;
+  linker?: Pick<User, "id" | "email" | "name">;
+};
+
+export type GithubCommit = {
+  id: string;
+  github_repo_id: string;
+  sha: string;
+  message: string;
+  author_name: string | null;
+  author_email: string | null;
+  author_login: string | null;
+  author_avatar_url: string | null;
+  html_url: string | null;
+  authored_at: string | null;
+  created_at: string;
+  repo?: Pick<GithubRepo, "id" | "full_name" | "platform">;
+};

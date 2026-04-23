@@ -5,6 +5,7 @@ use App\Modules\Adr\Http\Controllers\DecisionController;
 use App\Modules\Core\Http\Controllers\ProjectController;
 use App\Modules\Docs\Http\Controllers\DocController;
 use App\Modules\Files\Http\Controllers\ProjectFileController;
+use App\Modules\Github\Http\Controllers\GithubController;
 use App\Modules\Search\Http\Controllers\SearchController;
 use App\Modules\Tasks\Http\Controllers\BoardController;
 use App\Modules\Tasks\Http\Controllers\CommentController;
@@ -111,4 +112,12 @@ Route::middleware('supabase.auth')->group(function () {
 
     // Activity log
     Route::get('projects/{project}/activity', [ActivityController::class, 'index']);
+
+    // GitHub (multi-repos per project, pull model)
+    Route::get('projects/{project}/github/repos', [GithubController::class, 'index']);
+    Route::post('projects/{project}/github/repos', [GithubController::class, 'store']);
+    Route::patch('github/repos/{repo}', [GithubController::class, 'update']);
+    Route::delete('github/repos/{repo}', [GithubController::class, 'destroy']);
+    Route::post('github/repos/{repo}/sync', [GithubController::class, 'sync']);
+    Route::get('projects/{project}/github/commits', [GithubController::class, 'commits']);
 });

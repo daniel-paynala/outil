@@ -31,8 +31,8 @@ const TABS: Tab[] = [
   { key: "vault", label: "Coffre", icon: KeyRound },
   { key: "time", label: "Temps", icon: Timer },
   { key: "adr", label: "Décisions", icon: ScrollText },
+  { key: "github", label: "GitHub", icon: GitBranch },
   { key: "activity", label: "Journal", icon: Activity },
-  { key: "github", label: "GitHub", icon: GitBranch, disabled: true },
 ];
 
 export default function ProjectTabs({ projectId }: { projectId: string }) {
