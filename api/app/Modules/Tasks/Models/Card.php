@@ -7,6 +7,8 @@ use App\Modules\Core\Models\Project;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\BelongsToMany;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\SoftDeletes;
 
 class Card extends Model
@@ -16,11 +18,13 @@ class Card extends Model
     protected $fillable = [
         'project_id',
         'column_id',
+        'parent_card_id',
         'title',
         'description',
         'position',
         'priority',
         'due_date',
+        'estimate',
         'assigned_to',
         'created_by',
     ];
@@ -51,5 +55,40 @@ class Card extends Model
     public function creator(): BelongsTo
     {
         return $this->belongsTo(User::class, 'created_by');
+    }
+
+    public function parent(): BelongsTo
+    {
+        return $this->belongsTo(Card::class, 'parent_card_id');
+    }
+
+    public function children(): HasMany
+    {
+        return $this->hasMany(Card::class, 'parent_card_id');
+    }
+
+    public function labels(): BelongsToMany
+    {
+        return $this->belongsToMany(Label::class, 'card_labels')->withTimestamps();
+    }
+
+    public function dependencies(): BelongsToMany
+    {
+        return $this->belongsToMany(
+            Card::class,
+            'card_dependencies',
+            'card_id',
+            'depends_on_card_id',
+        )->withTimestamps();
+    }
+
+    public function dependents(): BelongsToMany
+    {
+        return $this->belongsToMany(
+            Card::class,
+            'card_dependencies',
+            'depends_on_card_id',
+            'card_id',
+        )->withTimestamps();
     }
 }

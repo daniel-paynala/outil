@@ -21,11 +21,39 @@ class BoardController extends Controller
         }
 
         $columns = $project->columns()
-            ->with(['cards' => fn ($q) => $q->orderBy('position')])
+            ->with([
+                'cards' => fn ($q) => $q->orderBy('position'),
+                'cards.labels:id,name,color',
+                'cards.assignee:id,email,name',
+            ])
+            ->withCount(['cards'])
             ->orderBy('position')
             ->get();
 
+        // add dependencies_count + children_count per card
+        foreach ($columns as $col) {
+            $col->cards->loadCount(['dependencies', 'children']);
+        }
+
         return response()->json($columns);
+    }
+
+    public function showCard(Request $request, Card $card): JsonResponse
+    {
+        $this->ensureMemberOfCard($request, $card);
+
+        $card->load([
+            'labels:id,name,color',
+            'assignee:id,email,name',
+            'creator:id,email,name',
+            'children:id,title,column_id,position,priority,due_date,assigned_to',
+            'children.assignee:id,email,name',
+            'dependencies:id,title,column_id',
+            'dependents:id,title,column_id',
+            'parent:id,title',
+        ]);
+
+        return response()->json($card);
     }
 
     public function storeColumn(Request $request, Project $project): JsonResponse
@@ -78,6 +106,7 @@ class BoardController extends Controller
         $data = $request->validate([
             'title' => ['required', 'string', 'max:200'],
             'description' => ['nullable', 'string', 'max:5000'],
+            'parent_card_id' => ['nullable', 'uuid', 'exists:cards,id'],
         ]);
 
         $userId = $this->userId($request);
@@ -89,6 +118,7 @@ class BoardController extends Controller
             'column_id' => $column->id,
             'title' => $data['title'],
             'description' => $data['description'] ?? null,
+            'parent_card_id' => $data['parent_card_id'] ?? null,
             'position' => $position,
             'created_by' => $userId,
         ]);
@@ -105,12 +135,41 @@ class BoardController extends Controller
             'description' => ['nullable', 'string', 'max:5000'],
             'priority' => ['nullable', 'string', 'in:low,medium,high,urgent'],
             'due_date' => ['nullable', 'date'],
+            'estimate' => ['nullable', 'string', 'max:40'],
             'assigned_to' => ['nullable', 'uuid', 'exists:users,id'],
+            'parent_card_id' => ['nullable', 'uuid', 'exists:cards,id'],
         ]);
 
         $card->update($data);
 
+        $card->load(['assignee:id,email,name', 'labels:id,name,color']);
+
         return response()->json($card);
+    }
+
+    public function addDependency(Request $request, Card $card): JsonResponse
+    {
+        $this->ensureMemberOfCard($request, $card);
+
+        $data = $request->validate([
+            'depends_on_card_id' => ['required', 'uuid', 'different:card_id', 'exists:cards,id'],
+        ]);
+
+        $other = Card::findOrFail($data['depends_on_card_id']);
+        abort_if($other->project_id !== $card->project_id, 422, 'Cards from different projects');
+        abort_if($other->id === $card->id, 422, 'A card cannot depend on itself');
+
+        $card->dependencies()->syncWithoutDetaching([$other->id]);
+
+        return response()->json($card->dependencies()->get(['id', 'title', 'column_id']));
+    }
+
+    public function removeDependency(Request $request, Card $card, Card $dep): JsonResponse
+    {
+        $this->ensureMemberOfCard($request, $card);
+        $card->dependencies()->detach($dep->id);
+
+        return response()->json(null, 204);
     }
 
     public function destroyCard(Request $request, Card $card): JsonResponse

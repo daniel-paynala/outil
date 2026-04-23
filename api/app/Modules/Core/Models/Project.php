@@ -5,6 +5,7 @@ namespace App\Modules\Core\Models;
 use App\Models\User;
 use App\Modules\Tasks\Models\Card;
 use App\Modules\Tasks\Models\Column;
+use App\Modules\Tasks\Models\Label;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -54,5 +55,10 @@ class Project extends Model
     public function cards(): HasMany
     {
         return $this->hasMany(Card::class);
+    }
+
+    public function labels(): HasMany
+    {
+        return $this->hasMany(Label::class)->orderBy('name');
     }
 }

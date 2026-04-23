@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useDroppable } from "@dnd-kit/core";
 import { Plus, MoreHorizontal, Trash2 } from "lucide-react";
-import type { BoardColumn, Card } from "@/lib/types";
+import type { BoardColumn, CardSummary } from "@/lib/types";
 import { apiFetch } from "@/lib/api/client";
 import BoardCard from "./card";
 
@@ -12,11 +12,13 @@ export default function BoardColumnView({
   onAddCard,
   onDeleteCard,
   onDeleteColumn,
+  onOpenCard,
 }: {
   column: BoardColumn;
-  onAddCard: (card: Card) => void;
+  onAddCard: (card: CardSummary) => void;
   onDeleteCard: (cardId: string) => void;
   onDeleteColumn: () => void;
+  onOpenCard: (cardId: string) => void;
 }) {
   const { setNodeRef, isOver } = useDroppable({ id: column.id });
   const [adding, setAdding] = useState(false);
@@ -69,6 +71,7 @@ export default function BoardColumnView({
             key={card.id}
             card={card}
             onDelete={() => onDeleteCard(card.id)}
+            onOpen={() => onOpenCard(card.id)}
           />
         ))}
         {column.cards.length === 0 && !adding && (
@@ -108,7 +111,7 @@ function NewCardForm({
   onCancel,
 }: {
   columnId: string;
-  onCreated: (card: Card) => void;
+  onCreated: (card: CardSummary) => void;
   onCancel: () => void;
 }) {
   const [title, setTitle] = useState("");
@@ -124,7 +127,7 @@ function NewCardForm({
     });
     setLoading(false);
     if (!res.ok) return;
-    const card = (await res.json()) as Card;
+    const card = (await res.json()) as CardSummary;
     onCreated(card);
   }
 

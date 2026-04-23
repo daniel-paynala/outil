@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useMemo } from "react";
 import {
   DndContext,
   DragOverlay,
@@ -16,28 +16,45 @@ import {
   SortableContext,
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
-import type { BoardColumn, Card } from "@/lib/types";
+import type {
+  BoardColumn,
+  CardSummary,
+  Label,
+  ProjectMember,
+} from "@/lib/types";
 import { apiFetch } from "@/lib/api/client";
 import BoardCard from "./card";
 import BoardColumnView from "./column";
 import NewColumnButton from "./new-column-button";
+import CardDrawer from "./card-drawer";
 
 export default function Board({
   projectId,
   initialColumns,
+  members,
+  initialLabels,
 }: {
   projectId: string;
   initialColumns: BoardColumn[];
+  members: ProjectMember[];
+  initialLabels: Label[];
 }) {
   const [columns, setColumns] = useState<BoardColumn[]>(initialColumns);
-  const [activeCard, setActiveCard] = useState<Card | null>(null);
+  const [labels, setLabels] = useState<Label[]>(initialLabels);
+  const [activeCard, setActiveCard] = useState<CardSummary | null>(null);
+  const [openCardId, setOpenCardId] = useState<string | null>(null);
+
+  const firstColumnId = useMemo(
+    () => (columns.length > 0 ? columns[0].id : null),
+    [columns],
+  );
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 4 } }),
   );
 
   const findCard = useCallback(
-    (cardId: string): { column: BoardColumn; card: Card } | null => {
+    (cardId: string): { column: BoardColumn; card: CardSummary } | null => {
       for (const col of columns) {
         const card = col.cards.find((c) => c.id === cardId);
         if (card) return { column: col, card };
@@ -63,21 +80,23 @@ export default function Board({
 
     const fromColumnId = fromFound.column.id;
 
-    // Dropping on a column (empty zone) → move to end of that column
     const overColumn = columns.find((c) => c.id === overId);
     if (overColumn) {
       if (overColumn.id === fromColumnId) return;
-      setColumns((prev) => moveCardToColumn(prev, activeId, overColumn.id, overColumn.cards.length));
+      setColumns((prev) =>
+        moveCardToColumn(prev, activeId, overColumn.id, overColumn.cards.length),
+      );
       return;
     }
 
-    // Dropping on another card
     const toFound = findCard(overId);
     if (!toFound) return;
     if (toFound.column.id === fromColumnId) return;
 
     const toIndex = toFound.column.cards.findIndex((c) => c.id === overId);
-    setColumns((prev) => moveCardToColumn(prev, activeId, toFound.column.id, toIndex));
+    setColumns((prev) =>
+      moveCardToColumn(prev, activeId, toFound.column.id, toIndex),
+    );
   }
 
   async function onDragEnd(e: DragEndEvent) {
@@ -108,7 +127,6 @@ export default function Board({
       if (currentIndex === -1) {
         targetPosition = overIndex;
       } else {
-        // Same column reorder
         setColumns((prev) =>
           reorderWithinColumn(prev, toFound.column.id, currentIndex, overIndex),
         );
@@ -116,8 +134,6 @@ export default function Board({
       }
     }
 
-    // Optimistic — already updated state during onDragOver / reorder.
-    // Fire the API call:
     const res = await apiFetch(`/api/projects/${projectId}/board/move`, {
       method: "POST",
       body: JSON.stringify({
@@ -127,13 +143,12 @@ export default function Board({
       }),
     });
     if (!res.ok) {
-      // Revert on failure by refetching
       const fresh = await apiFetch(`/api/projects/${projectId}/columns`);
       if (fresh.ok) setColumns(await fresh.json());
     }
   }
 
-  function onAddCard(columnId: string, card: Card) {
+  function onAddCard(columnId: string, card: CardSummary) {
     setColumns((prev) =>
       prev.map((c) =>
         c.id === columnId ? { ...c, cards: [...c.cards, card] } : c,
@@ -158,37 +173,66 @@ export default function Board({
     setColumns((prev) => prev.filter((c) => c.id !== columnId));
   }
 
+  function onCardUpdated(updated: CardSummary) {
+    setColumns((prev) =>
+      prev.map((col) => ({
+        ...col,
+        cards: col.cards.map((c) =>
+          c.id === updated.id ? { ...c, ...updated } : c,
+        ),
+      })),
+    );
+  }
+
   return (
-    <DndContext
-      sensors={sensors}
-      collisionDetection={closestCorners}
-      onDragStart={onDragStart}
-      onDragOver={onDragOver}
-      onDragEnd={onDragEnd}
-    >
-      <div className="flex gap-3 overflow-x-auto pb-4 -mx-8 px-8">
-        {columns.map((col) => (
-          <SortableContext
-            key={col.id}
-            items={col.cards.map((c) => c.id)}
-            strategy={verticalListSortingStrategy}
-          >
-            <BoardColumnView
-              column={col}
-              onAddCard={(card) => onAddCard(col.id, card)}
-              onDeleteCard={onDeleteCard}
-              onDeleteColumn={() => onDeleteColumn(col.id)}
-            />
-          </SortableContext>
-        ))}
+    <>
+      <DndContext
+        sensors={sensors}
+        collisionDetection={closestCorners}
+        onDragStart={onDragStart}
+        onDragOver={onDragOver}
+        onDragEnd={onDragEnd}
+      >
+        <div className="flex gap-3 overflow-x-auto pb-4 -mx-8 px-8">
+          {columns.map((col) => (
+            <SortableContext
+              key={col.id}
+              items={col.cards.map((c) => c.id)}
+              strategy={verticalListSortingStrategy}
+            >
+              <BoardColumnView
+                column={col}
+                onAddCard={(card) => onAddCard(col.id, card)}
+                onDeleteCard={onDeleteCard}
+                onDeleteColumn={() => onDeleteColumn(col.id)}
+                onOpenCard={setOpenCardId}
+              />
+            </SortableContext>
+          ))}
 
-        <NewColumnButton projectId={projectId} onCreated={onAddColumn} />
-      </div>
+          <NewColumnButton projectId={projectId} onCreated={onAddColumn} />
+        </div>
 
-      <DragOverlay>
-        {activeCard ? <BoardCard card={activeCard} overlay /> : null}
-      </DragOverlay>
-    </DndContext>
+        <DragOverlay>
+          {activeCard ? <BoardCard card={activeCard} overlay /> : null}
+        </DragOverlay>
+      </DndContext>
+
+      {openCardId && (
+        <CardDrawer
+          key={openCardId}
+          cardId={openCardId}
+          projectId={projectId}
+          members={members}
+          labels={labels}
+          firstColumnId={firstColumnId}
+          onClose={() => setOpenCardId(null)}
+          onUpdated={onCardUpdated}
+          onDeleted={() => onDeleteCard(openCardId)}
+          onLabelsChanged={setLabels}
+        />
+      )}
+    </>
   );
 }
 
@@ -198,7 +242,7 @@ function moveCardToColumn(
   toColumnId: string,
   toIndex: number,
 ): BoardColumn[] {
-  let moving: Card | null = null;
+  let moving: CardSummary | null = null;
   const removed = columns.map((col) => {
     const found = col.cards.find((c) => c.id === cardId);
     if (found) {

@@ -2,6 +2,7 @@
 
 use App\Modules\Core\Http\Controllers\ProjectController;
 use App\Modules\Tasks\Http\Controllers\BoardController;
+use App\Modules\Tasks\Http\Controllers\LabelController;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 
@@ -31,8 +32,21 @@ Route::middleware('supabase.auth')->group(function () {
     Route::delete('columns/{column}', [BoardController::class, 'destroyColumn']);
 
     Route::post('columns/{column}/cards', [BoardController::class, 'storeCard']);
+    Route::get('cards/{card}', [BoardController::class, 'showCard']);
     Route::patch('cards/{card}', [BoardController::class, 'updateCard']);
     Route::delete('cards/{card}', [BoardController::class, 'destroyCard']);
 
     Route::post('projects/{project}/board/move', [BoardController::class, 'moveCard']);
+
+    // Dependencies
+    Route::post('cards/{card}/dependencies', [BoardController::class, 'addDependency']);
+    Route::delete('cards/{card}/dependencies/{dep}', [BoardController::class, 'removeDependency']);
+
+    // Labels
+    Route::get('projects/{project}/labels', [LabelController::class, 'index']);
+    Route::post('projects/{project}/labels', [LabelController::class, 'store']);
+    Route::patch('labels/{label}', [LabelController::class, 'update']);
+    Route::delete('labels/{label}', [LabelController::class, 'destroy']);
+    Route::post('cards/{card}/labels', [LabelController::class, 'attachToCard']);
+    Route::delete('cards/{card}/labels/{label}', [LabelController::class, 'detachFromCard']);
 });

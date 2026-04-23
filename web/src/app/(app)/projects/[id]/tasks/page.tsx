@@ -1,5 +1,5 @@
 import { apiJson } from "@/lib/api/server";
-import type { BoardColumn } from "@/lib/types";
+import type { BoardColumn, Label, ProjectDetail } from "@/lib/types";
 import Board from "./board";
 
 export default async function TasksPage({
@@ -8,7 +8,19 @@ export default async function TasksPage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
-  const columns = await apiJson<BoardColumn[]>(`/api/projects/${id}/columns`);
 
-  return <Board projectId={id} initialColumns={columns} />;
+  const [columns, project, labels] = await Promise.all([
+    apiJson<BoardColumn[]>(`/api/projects/${id}/columns`),
+    apiJson<ProjectDetail>(`/api/projects/${id}`),
+    apiJson<Label[]>(`/api/projects/${id}/labels`),
+  ]);
+
+  return (
+    <Board
+      projectId={id}
+      initialColumns={columns}
+      members={project.members ?? []}
+      initialLabels={labels}
+    />
+  );
 }
