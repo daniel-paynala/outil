@@ -193,3 +193,29 @@ export type TimeEntry = {
   card?: { id: string; title: string; column_id: string } | null;
   project?: Pick<Project, "id" | "name" | "slug" | "color">;
 };
+
+export type DecisionStatus =
+  | "proposed"
+  | "accepted"
+  | "deprecated"
+  | "superseded";
+
+export type Decision = {
+  id: string;
+  project_id: string;
+  number: number;
+  title: string;
+  status: DecisionStatus;
+  context: string | null;
+  decision: string | null;
+  consequences: string | null;
+  alternatives: string | null;
+  references: string | null;
+  decided_at: string | null;
+  created_by: string;
+  updated_by: string | null;
+  created_at: string;
+  updated_at: string;
+  creator?: Pick<User, "id" | "email" | "name">;
+  updater?: Pick<User, "id" | "email" | "name"> | null;
+};

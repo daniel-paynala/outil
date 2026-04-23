@@ -1,5 +1,6 @@
 <?php
 
+use App\Modules\Adr\Http\Controllers\DecisionController;
 use App\Modules\Core\Http\Controllers\ProjectController;
 use App\Modules\Docs\Http\Controllers\DocController;
 use App\Modules\Files\Http\Controllers\ProjectFileController;
@@ -90,4 +91,11 @@ Route::middleware('supabase.auth')->group(function () {
     Route::post('time/{entry}/stop', [TimeController::class, 'stop']);
     Route::patch('time/{entry}', [TimeController::class, 'update']);
     Route::delete('time/{entry}', [TimeController::class, 'destroy']);
+
+    // Decisions (ADR)
+    Route::get('projects/{project}/decisions', [DecisionController::class, 'index']);
+    Route::post('projects/{project}/decisions', [DecisionController::class, 'store']);
+    Route::get('decisions/{decision}', [DecisionController::class, 'show']);
+    Route::patch('decisions/{decision}', [DecisionController::class, 'update']);
+    Route::delete('decisions/{decision}', [DecisionController::class, 'destroy']);
 });
