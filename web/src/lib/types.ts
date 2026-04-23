@@ -134,3 +134,46 @@ export type DocRevision = {
   created_at: string;
   creator?: Pick<User, "id" | "email" | "name">;
 };
+
+export type VaultCategory =
+  | "database"
+  | "api"
+  | "ssh"
+  | "env"
+  | "password"
+  | "other";
+
+export type VaultEntry = {
+  id: string;
+  project_id: string;
+  name: string;
+  category: VaultCategory;
+  username: string | null;
+  notes: string | null;
+  url: string | null;
+  expires_at: string | null;
+  created_by: string;
+  updated_by: string | null;
+  created_at: string;
+  updated_at: string;
+  deleted_at: string | null;
+  creator?: Pick<User, "id" | "email" | "name">;
+  updater?: Pick<User, "id" | "email" | "name"> | null;
+};
+
+export type VaultAccessLog = {
+  id: string;
+  entry_id: string;
+  user_id: string;
+  action:
+    | "viewed"
+    | "revealed"
+    | "created"
+    | "updated"
+    | "deleted"
+    | "restored";
+  ip: string | null;
+  user_agent: string | null;
+  created_at: string;
+  user?: Pick<User, "id" | "email" | "name">;
+};

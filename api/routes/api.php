@@ -6,6 +6,7 @@ use App\Modules\Files\Http\Controllers\ProjectFileController;
 use App\Modules\Tasks\Http\Controllers\BoardController;
 use App\Modules\Tasks\Http\Controllers\LabelController;
 use App\Modules\Tasks\Http\Controllers\MyTasksController;
+use App\Modules\Vault\Http\Controllers\VaultController;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 
@@ -70,4 +71,13 @@ Route::middleware('supabase.auth')->group(function () {
     Route::get('docs/{page}/revisions', [DocController::class, 'revisions']);
     Route::get('docs/revisions/{revision}', [DocController::class, 'showRevision']);
     Route::post('docs/{page}/restore/{revision}', [DocController::class, 'restoreRevision']);
+
+    // Vault (encrypted secrets + audit log)
+    Route::get('projects/{project}/vault', [VaultController::class, 'index']);
+    Route::post('projects/{project}/vault', [VaultController::class, 'store']);
+    Route::get('vault/{entry}', [VaultController::class, 'show']);
+    Route::patch('vault/{entry}', [VaultController::class, 'update']);
+    Route::delete('vault/{entry}', [VaultController::class, 'destroy']);
+    Route::get('vault/{entry}/reveal', [VaultController::class, 'reveal']);
+    Route::get('vault/{entry}/log', [VaultController::class, 'accessLog']);
 });
