@@ -26,7 +26,7 @@ const TABS: Tab[] = [
   { key: "", label: "Aperçu", icon: LayoutGrid },
   { key: "tasks", label: "Tâches", icon: ListTodo },
   { key: "documents", label: "Documents", icon: Paperclip },
-  { key: "docs", label: "Documentation", icon: BookOpen, disabled: true },
+  { key: "docs", label: "Documentation", icon: BookOpen },
   { key: "github", label: "GitHub", icon: GitBranch, disabled: true },
   { key: "vault", label: "Coffre", icon: KeyRound, disabled: true },
   { key: "time", label: "Temps", icon: Timer, disabled: true },

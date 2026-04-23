@@ -104,3 +104,33 @@ export type ProjectFile = {
   updated_at: string;
   uploader?: Pick<User, "id" | "email" | "name">;
 };
+
+export type DocPageSummary = {
+  id: string;
+  project_id: string;
+  parent_id: string | null;
+  title: string;
+  slug: string;
+  position: number;
+  updated_at: string;
+};
+
+export type DocPage = DocPageSummary & {
+  content: string | null;
+  created_by: string;
+  updated_by: string | null;
+  created_at: string;
+  deleted_at: string | null;
+  creator?: Pick<User, "id" | "email" | "name">;
+  updater?: Pick<User, "id" | "email" | "name"> | null;
+};
+
+export type DocRevision = {
+  id: string;
+  page_id: string;
+  title: string;
+  content: string | null;
+  created_by: string;
+  created_at: string;
+  creator?: Pick<User, "id" | "email" | "name">;
+};

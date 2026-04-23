@@ -1,6 +1,7 @@
 <?php
 
 use App\Modules\Core\Http\Controllers\ProjectController;
+use App\Modules\Docs\Http\Controllers\DocController;
 use App\Modules\Files\Http\Controllers\ProjectFileController;
 use App\Modules\Tasks\Http\Controllers\BoardController;
 use App\Modules\Tasks\Http\Controllers\LabelController;
@@ -59,4 +60,14 @@ Route::middleware('supabase.auth')->group(function () {
     Route::post('projects/{project}/files', [ProjectFileController::class, 'store']);
     Route::get('files/{file}', [ProjectFileController::class, 'show']);
     Route::delete('files/{file}', [ProjectFileController::class, 'destroy']);
+
+    // Documentation (markdown pages with light revisions)
+    Route::get('projects/{project}/docs', [DocController::class, 'index']);
+    Route::post('projects/{project}/docs', [DocController::class, 'store']);
+    Route::get('docs/{page}', [DocController::class, 'show']);
+    Route::patch('docs/{page}', [DocController::class, 'update']);
+    Route::delete('docs/{page}', [DocController::class, 'destroy']);
+    Route::get('docs/{page}/revisions', [DocController::class, 'revisions']);
+    Route::get('docs/revisions/{revision}', [DocController::class, 'showRevision']);
+    Route::post('docs/{page}/restore/{revision}', [DocController::class, 'restoreRevision']);
 });
