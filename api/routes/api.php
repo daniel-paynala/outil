@@ -1,5 +1,6 @@
 <?php
 
+use App\Modules\Core\Http\Controllers\ProjectController;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 
@@ -19,4 +20,6 @@ Route::middleware('supabase.auth')->group(function () {
             'claims' => $request->attributes->get('supabase_user'),
         ]);
     });
+
+    Route::apiResource('projects', ProjectController::class);
 });

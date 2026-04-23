@@ -6,14 +6,10 @@ import { usePathname, useRouter } from "next/navigation";
 import {
   LayoutDashboard,
   FolderKanban,
-  BookOpen,
-  GitBranch,
-  KeyRound,
   Search,
   Code2,
-  ScrollText,
   CalendarClock,
-  Timer,
+  Bell,
   LogOut,
   type LucideIcon,
 } from "lucide-react";
@@ -29,15 +25,11 @@ type NavItem = {
 
 const NAV: NavItem[] = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
-  { href: "/projects", label: "Projets", icon: FolderKanban, disabled: true },
-  { href: "/docs", label: "Documentation", icon: BookOpen, disabled: true },
-  { href: "/github", label: "GitHub", icon: GitBranch, disabled: true },
-  { href: "/vault", label: "Coffre", icon: KeyRound, disabled: true },
+  { href: "/projects", label: "Projets", icon: FolderKanban },
   { href: "/search", label: "Recherche", icon: Search, disabled: true },
   { href: "/snippets", label: "Snippets", icon: Code2, disabled: true },
-  { href: "/adr", label: "Décisions", icon: ScrollText, disabled: true },
   { href: "/agenda", label: "Agenda", icon: CalendarClock, disabled: true },
-  { href: "/time", label: "Temps", icon: Timer, disabled: true },
+  { href: "/notifications", label: "Notifications", icon: Bell, disabled: true },
 ];
 
 export default function Sidebar({ email }: { email: string }) {
