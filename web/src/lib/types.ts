@@ -83,3 +83,11 @@ export type ProjectDetail = Project & {
   creator?: User;
   members?: ProjectMember[];
 };
+
+export type MyTask = CardSummary & {
+  project: Pick<Project, "id" | "name" | "slug" | "color">;
+  column: { id: string; name: string; position: number };
+  labels: Label[];
+  dependencies_count: number;
+  children_count: number;
+};

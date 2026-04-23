@@ -3,6 +3,7 @@
 use App\Modules\Core\Http\Controllers\ProjectController;
 use App\Modules\Tasks\Http\Controllers\BoardController;
 use App\Modules\Tasks\Http\Controllers\LabelController;
+use App\Modules\Tasks\Http\Controllers\MyTasksController;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 
@@ -24,6 +25,8 @@ Route::middleware('supabase.auth')->group(function () {
     });
 
     Route::apiResource('projects', ProjectController::class);
+
+    Route::get('me/tasks', [MyTasksController::class, 'index']);
 
     // Tasks / Board
     Route::get('projects/{project}/columns', [BoardController::class, 'index']);
