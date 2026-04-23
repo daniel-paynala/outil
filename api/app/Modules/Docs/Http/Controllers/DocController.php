@@ -3,6 +3,7 @@
 namespace App\Modules\Docs\Http\Controllers;
 
 use App\Http\Controllers\Controller;
+use App\Modules\Activity\Services\ActivityLogger;
 use App\Modules\Core\Models\Project;
 use App\Modules\Docs\Models\DocPage;
 use App\Modules\Docs\Models\DocRevision;
@@ -13,6 +14,8 @@ use Illuminate\Support\Str;
 
 class DocController extends Controller
 {
+    public function __construct(private readonly ActivityLogger $activity) {}
+
     public function index(Request $request, Project $project): JsonResponse
     {
         $this->ensureMember($request, $project);
@@ -57,6 +60,8 @@ class DocController extends Controller
             'created_by' => $userId,
             'updated_by' => $userId,
         ]);
+
+        $this->activity->log($project->id, $userId, 'doc.created', $page, $page->title);
 
         return response()->json($page, 201);
     }
@@ -122,6 +127,8 @@ class DocController extends Controller
             ]);
         });
 
+        $this->activity->log($page->project_id, $userId, 'doc.updated', $page, $page->title);
+
         $page->load(['updater:id,email,name']);
 
         return response()->json($page);
@@ -130,7 +137,11 @@ class DocController extends Controller
     public function destroy(Request $request, DocPage $page): JsonResponse
     {
         $this->ensureMember($request, $page->project);
+        $title = $page->title;
+        $projectId = $page->project_id;
         $page->delete();
+
+        $this->activity->log($projectId, $this->userId($request), 'doc.deleted', null, $title);
 
         return response()->json(null, 204);
     }
@@ -180,6 +191,10 @@ class DocController extends Controller
                 'updated_by' => $userId,
             ]);
         });
+
+        $this->activity->log($page->project_id, $userId, 'doc.restored', $page, $page->title, [
+            'revision_id' => $revision->id,
+        ]);
 
         return response()->json($page->fresh(['updater:id,email,name']));
     }

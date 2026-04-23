@@ -219,3 +219,16 @@ export type Decision = {
   creator?: Pick<User, "id" | "email" | "name">;
   updater?: Pick<User, "id" | "email" | "name"> | null;
 };
+
+export type ActivityLog = {
+  id: string;
+  project_id: string;
+  actor_id: string | null;
+  action: string;
+  subject_type: string | null;
+  subject_id: string | null;
+  subject_name: string | null;
+  metadata: Record<string, unknown> | null;
+  created_at: string;
+  actor?: Pick<User, "id" | "email" | "name"> | null;
+};

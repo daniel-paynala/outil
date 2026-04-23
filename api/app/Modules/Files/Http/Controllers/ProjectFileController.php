@@ -3,6 +3,7 @@
 namespace App\Modules\Files\Http\Controllers;
 
 use App\Http\Controllers\Controller;
+use App\Modules\Activity\Services\ActivityLogger;
 use App\Modules\Core\Models\Project;
 use App\Modules\Files\Models\ProjectFile;
 use App\Modules\Files\Services\SupabaseStorage;
@@ -12,7 +13,10 @@ use Illuminate\Support\Str;
 
 class ProjectFileController extends Controller
 {
-    public function __construct(private readonly SupabaseStorage $storage) {}
+    public function __construct(
+        private readonly SupabaseStorage $storage,
+        private readonly ActivityLogger $activity,
+    ) {}
 
     public function index(Request $request, Project $project): JsonResponse
     {
@@ -56,6 +60,10 @@ class ProjectFileController extends Controller
 
         $record->load('uploader:id,email,name');
 
+        $this->activity->log($project->id, $userId, 'file.uploaded', $record, $record->name, [
+            'size' => $record->size_bytes,
+        ]);
+
         return response()->json($record, 201);
     }
 
@@ -76,8 +84,13 @@ class ProjectFileController extends Controller
     {
         $this->ensureMember($request, $file->project);
 
+        $name = $file->name;
+        $projectId = $file->project_id;
+
         $this->storage->delete($file->path);
         $file->delete();
+
+        $this->activity->log($projectId, $this->userId($request), 'file.deleted', null, $name);
 
         return response()->json(null, 204);
     }

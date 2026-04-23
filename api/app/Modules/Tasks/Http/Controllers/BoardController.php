@@ -3,6 +3,7 @@
 namespace App\Modules\Tasks\Http\Controllers;
 
 use App\Http\Controllers\Controller;
+use App\Modules\Activity\Services\ActivityLogger;
 use App\Modules\Core\Models\Project;
 use App\Modules\Tasks\Models\Card;
 use App\Modules\Tasks\Models\Column;
@@ -12,6 +13,8 @@ use Illuminate\Support\Facades\DB;
 
 class BoardController extends Controller
 {
+    public function __construct(private readonly ActivityLogger $activity) {}
+
     public function index(Request $request, Project $project): JsonResponse
     {
         $this->ensureMember($request, $project);
@@ -123,6 +126,10 @@ class BoardController extends Controller
             'created_by' => $userId,
         ]);
 
+        $this->activity->log($card->project_id, $userId, 'card.created', $card, $card->title, [
+            'column' => $column->name,
+        ]);
+
         return response()->json($card, 201);
     }
 
@@ -140,7 +147,19 @@ class BoardController extends Controller
             'parent_card_id' => ['nullable', 'uuid', 'exists:cards,id'],
         ]);
 
+        $changed = array_keys(array_diff_assoc($data, $card->only(array_keys($data))));
         $card->update($data);
+
+        if (! empty($changed)) {
+            $this->activity->log(
+                $card->project_id,
+                $this->userId($request),
+                'card.updated',
+                $card,
+                $card->title,
+                ['fields' => $changed],
+            );
+        }
 
         $card->load(['assignee:id,email,name', 'labels:id,name,color']);
 
@@ -175,7 +194,11 @@ class BoardController extends Controller
     public function destroyCard(Request $request, Card $card): JsonResponse
     {
         $this->ensureMemberOfCard($request, $card);
+        $title = $card->title;
+        $projectId = $card->project_id;
         $card->delete();
+
+        $this->activity->log($projectId, $this->userId($request), 'card.deleted', null, $title);
 
         return response()->json(null, 204);
     }
@@ -194,7 +217,9 @@ class BoardController extends Controller
             'to_position' => ['required', 'integer', 'min:0'],
         ]);
 
-        DB::transaction(function () use ($data, $project) {
+        $logMeta = null;
+
+        DB::transaction(function () use ($data, $project, &$logMeta) {
             $card = Card::where('project_id', $project->id)
                 ->where('id', $data['card_id'])
                 ->lockForUpdate()
@@ -207,6 +232,15 @@ class BoardController extends Controller
             $fromColumnId = $card->column_id;
             $toColumnId = $toColumn->id;
             $toPos = $data['to_position'];
+
+            if ($fromColumnId !== $toColumnId) {
+                $fromColumn = Column::find($fromColumnId);
+                $logMeta = [
+                    'card' => $card,
+                    'from' => $fromColumn?->name,
+                    'to' => $toColumn->name,
+                ];
+            }
 
             if ($fromColumnId === $toColumnId) {
                 $cards = Card::where('column_id', $fromColumnId)
@@ -247,6 +281,17 @@ class BoardController extends Controller
                 }
             }
         });
+
+        if ($logMeta) {
+            $this->activity->log(
+                $project->id,
+                $this->userId($request),
+                'card.moved',
+                $logMeta['card'],
+                $logMeta['card']->title,
+                ['from' => $logMeta['from'], 'to' => $logMeta['to']],
+            );
+        }
 
         return response()->json(['ok' => true]);
     }

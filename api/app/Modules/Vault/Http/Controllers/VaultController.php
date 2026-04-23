@@ -3,6 +3,7 @@
 namespace App\Modules\Vault\Http\Controllers;
 
 use App\Http\Controllers\Controller;
+use App\Modules\Activity\Services\ActivityLogger;
 use App\Modules\Core\Models\Project;
 use App\Modules\Vault\Models\VaultAccessLog;
 use App\Modules\Vault\Models\VaultEntry;
@@ -12,6 +13,8 @@ use Illuminate\Http\Request;
 class VaultController extends Controller
 {
     private const CATEGORIES = ['database', 'api', 'ssh', 'env', 'password', 'other'];
+
+    public function __construct(private readonly ActivityLogger $activity) {}
 
     public function index(Request $request, Project $project): JsonResponse
     {
@@ -49,6 +52,7 @@ class VaultController extends Controller
         ]);
 
         $this->log($entry->id, $userId, 'created', $request);
+        $this->activity->log($project->id, $userId, 'vault.created', $entry, $entry->name);
 
         return response()->json($entry, 201);
     }
@@ -73,7 +77,9 @@ class VaultController extends Controller
     {
         $this->ensureMember($request, $entry->project);
 
-        $this->log($entry->id, $this->userId($request), 'revealed', $request);
+        $userId = $this->userId($request);
+        $this->log($entry->id, $userId, 'revealed', $request);
+        $this->activity->log($entry->project_id, $userId, 'vault.revealed', $entry, $entry->name);
 
         return response()->json([
             'secret' => $entry->secret, // cast decrypts automatically
@@ -98,6 +104,7 @@ class VaultController extends Controller
         $entry->update([...$data, 'updated_by' => $userId]);
 
         $this->log($entry->id, $userId, 'updated', $request);
+        $this->activity->log($entry->project_id, $userId, 'vault.updated', $entry, $entry->name);
 
         return response()->json($entry);
     }
@@ -106,8 +113,14 @@ class VaultController extends Controller
     {
         $this->ensureMember($request, $entry->project);
 
-        $this->log($entry->id, $this->userId($request), 'deleted', $request);
+        $userId = $this->userId($request);
+        $name = $entry->name;
+        $projectId = $entry->project_id;
+
+        $this->log($entry->id, $userId, 'deleted', $request);
         $entry->delete();
+
+        $this->activity->log($projectId, $userId, 'vault.deleted', null, $name);
 
         return response()->json(null, 204);
     }

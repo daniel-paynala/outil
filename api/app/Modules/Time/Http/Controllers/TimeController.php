@@ -3,6 +3,7 @@
 namespace App\Modules\Time\Http\Controllers;
 
 use App\Http\Controllers\Controller;
+use App\Modules\Activity\Services\ActivityLogger;
 use App\Modules\Core\Models\Project;
 use App\Modules\Tasks\Models\Card;
 use App\Modules\Time\Models\TimeEntry;
@@ -11,6 +12,8 @@ use Illuminate\Http\Request;
 
 class TimeController extends Controller
 {
+    public function __construct(private readonly ActivityLogger $activity) {}
+
     public function index(Request $request, Project $project): JsonResponse
     {
         $this->ensureMember($request, $project);
@@ -87,6 +90,15 @@ class TimeController extends Controller
         $this->stopEntry($entry);
         $entry->load('user:id,email,name', 'card:id,title,column_id');
 
+        $this->activity->log(
+            $entry->project_id,
+            $entry->user_id,
+            'time.logged',
+            $entry,
+            $entry->description ?: ($entry->card?->title ?? 'Temps'),
+            ['seconds' => $entry->seconds],
+        );
+
         return response()->json($entry);
     }
 
@@ -117,6 +129,15 @@ class TimeController extends Controller
         ]);
 
         $entry->load('user:id,email,name', 'card:id,title,column_id');
+
+        $this->activity->log(
+            $project->id,
+            $userId,
+            'time.logged',
+            $entry,
+            $entry->description ?: ($entry->card?->title ?? 'Temps'),
+            ['seconds' => $entry->seconds, 'manual' => true],
+        );
 
         return response()->json($entry, 201);
     }

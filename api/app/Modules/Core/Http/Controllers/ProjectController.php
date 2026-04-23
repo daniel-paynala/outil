@@ -3,6 +3,7 @@
 namespace App\Modules\Core\Http\Controllers;
 
 use App\Http\Controllers\Controller;
+use App\Modules\Activity\Services\ActivityLogger;
 use App\Modules\Core\Models\Project;
 use App\Modules\Core\Models\ProjectMember;
 use App\Modules\Tasks\Models\Column;
@@ -13,6 +14,8 @@ use Illuminate\Support\Str;
 
 class ProjectController extends Controller
 {
+    public function __construct(private readonly ActivityLogger $activity) {}
+
     public function index(Request $request): JsonResponse
     {
         $userId = $this->userId($request);
@@ -66,6 +69,8 @@ class ProjectController extends Controller
             return $project;
         });
 
+        $this->activity->log($project->id, $userId, 'project.created', $project);
+
         return response()->json($project, 201);
     }
 
@@ -89,6 +94,8 @@ class ProjectController extends Controller
         ]);
 
         $project->update($data);
+
+        $this->activity->log($project->id, $this->userId($request), 'project.updated', $project);
 
         return response()->json($project);
     }

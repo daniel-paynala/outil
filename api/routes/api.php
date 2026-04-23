@@ -1,5 +1,6 @@
 <?php
 
+use App\Modules\Activity\Http\Controllers\ActivityController;
 use App\Modules\Adr\Http\Controllers\DecisionController;
 use App\Modules\Core\Http\Controllers\ProjectController;
 use App\Modules\Docs\Http\Controllers\DocController;
@@ -98,4 +99,7 @@ Route::middleware('supabase.auth')->group(function () {
     Route::get('decisions/{decision}', [DecisionController::class, 'show']);
     Route::patch('decisions/{decision}', [DecisionController::class, 'update']);
     Route::delete('decisions/{decision}', [DecisionController::class, 'destroy']);
+
+    // Activity log
+    Route::get('projects/{project}/activity', [ActivityController::class, 'index']);
 });

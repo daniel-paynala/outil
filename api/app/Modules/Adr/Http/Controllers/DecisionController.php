@@ -3,6 +3,7 @@
 namespace App\Modules\Adr\Http\Controllers;
 
 use App\Http\Controllers\Controller;
+use App\Modules\Activity\Services\ActivityLogger;
 use App\Modules\Adr\Models\Decision;
 use App\Modules\Core\Models\Project;
 use Illuminate\Http\JsonResponse;
@@ -11,6 +12,8 @@ use Illuminate\Http\Request;
 class DecisionController extends Controller
 {
     private const STATUSES = ['proposed', 'accepted', 'deprecated', 'superseded'];
+
+    public function __construct(private readonly ActivityLogger $activity) {}
 
     public function index(Request $request, Project $project): JsonResponse
     {
@@ -54,6 +57,14 @@ class DecisionController extends Controller
 
         $decision->load('creator:id,email,name');
 
+        $this->activity->log(
+            $project->id,
+            $userId,
+            'decision.created',
+            $decision,
+            "ADR-{$decision->number} · {$decision->title}",
+        );
+
         return response()->json($decision, 201);
     }
 
@@ -81,10 +92,23 @@ class DecisionController extends Controller
             'decided_at' => ['nullable', 'date'],
         ]);
 
+        $userId = $this->userId($request);
+        $prevStatus = $decision->status;
         $decision->update([
             ...$data,
-            'updated_by' => $this->userId($request),
+            'updated_by' => $userId,
         ]);
+
+        $statusChanged = isset($data['status']) && $data['status'] !== $prevStatus;
+
+        $this->activity->log(
+            $decision->project_id,
+            $userId,
+            $statusChanged ? 'decision.status_changed' : 'decision.updated',
+            $decision,
+            "ADR-{$decision->number} · {$decision->title}",
+            $statusChanged ? ['from' => $prevStatus, 'to' => $decision->status] : [],
+        );
 
         $decision->load('updater:id,email,name');
 
@@ -94,7 +118,11 @@ class DecisionController extends Controller
     public function destroy(Request $request, Decision $decision): JsonResponse
     {
         $this->ensureMember($request, $decision->project);
+        $label = "ADR-{$decision->number} · {$decision->title}";
+        $projectId = $decision->project_id;
         $decision->delete();
+
+        $this->activity->log($projectId, $this->userId($request), 'decision.deleted', null, $label);
 
         return response()->json(null, 204);
     }

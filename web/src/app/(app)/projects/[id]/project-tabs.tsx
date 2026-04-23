@@ -13,6 +13,7 @@ import {
   KeyRound,
   Timer,
   ScrollText,
+  Activity,
 } from "lucide-react";
 
 type Tab = {
@@ -30,6 +31,7 @@ const TABS: Tab[] = [
   { key: "vault", label: "Coffre", icon: KeyRound },
   { key: "time", label: "Temps", icon: Timer },
   { key: "adr", label: "Décisions", icon: ScrollText },
+  { key: "activity", label: "Journal", icon: Activity },
   { key: "github", label: "GitHub", icon: GitBranch, disabled: true },
 ];
 
