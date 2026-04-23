@@ -177,3 +177,19 @@ export type VaultAccessLog = {
   created_at: string;
   user?: Pick<User, "id" | "email" | "name">;
 };
+
+export type TimeEntry = {
+  id: string;
+  project_id: string;
+  card_id: string | null;
+  user_id: string;
+  description: string | null;
+  started_at: string;
+  ended_at: string | null;
+  seconds: number | null;
+  created_at: string;
+  updated_at: string;
+  user?: Pick<User, "id" | "email" | "name">;
+  card?: { id: string; title: string; column_id: string } | null;
+  project?: Pick<Project, "id" | "name" | "slug" | "color">;
+};

@@ -28,8 +28,8 @@ const TABS: Tab[] = [
   { key: "documents", label: "Documents", icon: Paperclip },
   { key: "docs", label: "Documentation", icon: BookOpen },
   { key: "vault", label: "Coffre", icon: KeyRound },
+  { key: "time", label: "Temps", icon: Timer },
   { key: "github", label: "GitHub", icon: GitBranch, disabled: true },
-  { key: "time", label: "Temps", icon: Timer, disabled: true },
   { key: "adr", label: "Décisions", icon: ScrollText, disabled: true },
 ];
 

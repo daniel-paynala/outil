@@ -6,6 +6,7 @@ use App\Modules\Files\Http\Controllers\ProjectFileController;
 use App\Modules\Tasks\Http\Controllers\BoardController;
 use App\Modules\Tasks\Http\Controllers\LabelController;
 use App\Modules\Tasks\Http\Controllers\MyTasksController;
+use App\Modules\Time\Http\Controllers\TimeController;
 use App\Modules\Vault\Http\Controllers\VaultController;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
@@ -80,4 +81,13 @@ Route::middleware('supabase.auth')->group(function () {
     Route::delete('vault/{entry}', [VaultController::class, 'destroy']);
     Route::get('vault/{entry}/reveal', [VaultController::class, 'reveal']);
     Route::get('vault/{entry}/log', [VaultController::class, 'accessLog']);
+
+    // Time tracking
+    Route::get('time/running', [TimeController::class, 'running']);
+    Route::get('projects/{project}/time', [TimeController::class, 'index']);
+    Route::post('projects/{project}/time', [TimeController::class, 'store']);
+    Route::post('projects/{project}/time/start', [TimeController::class, 'start']);
+    Route::post('time/{entry}/stop', [TimeController::class, 'stop']);
+    Route::patch('time/{entry}', [TimeController::class, 'update']);
+    Route::delete('time/{entry}', [TimeController::class, 'destroy']);
 });
