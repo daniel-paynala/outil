@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback, useMemo } from "react";
+import { useState, useCallback, useMemo, useEffect } from "react";
 import {
   DndContext,
   DragOverlay,
@@ -43,6 +43,9 @@ export default function Board({
   const [labels, setLabels] = useState<Label[]>(initialLabels);
   const [activeCard, setActiveCard] = useState<CardSummary | null>(null);
   const [openCardId, setOpenCardId] = useState<string | null>(null);
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => setMounted(true), []);
 
   const firstColumnId = useMemo(
     () => (columns.length > 0 ? columns[0].id : null),
@@ -184,6 +187,10 @@ export default function Board({
     );
   }
 
+  if (!mounted) {
+    return <BoardSkeleton columns={columns} />;
+  }
+
   return (
     <>
       <DndContext
@@ -233,6 +240,36 @@ export default function Board({
         />
       )}
     </>
+  );
+}
+
+function BoardSkeleton({ columns }: { columns: BoardColumn[] }) {
+  return (
+    <div className="flex gap-3 overflow-x-auto pb-4 -mx-8 px-8">
+      {columns.map((col) => (
+        <div
+          key={col.id}
+          className="flex flex-col w-72 shrink-0 rounded-lg bg-[var(--surface)] border border-[var(--border)] max-h-[calc(100vh-16rem)]"
+        >
+          <header className="flex items-center gap-2 px-3 py-2.5 border-b border-[var(--border)]">
+            <span className="text-sm font-medium">{col.name}</span>
+            <span className="text-[11px] text-[var(--muted)] bg-[var(--color-neutral-200)] dark:bg-[var(--color-neutral-700)] rounded-full px-1.5 py-0.5">
+              {col.cards.length}
+            </span>
+          </header>
+          <div className="flex-1 overflow-y-auto p-2 space-y-2">
+            {col.cards.map((c) => (
+              <div
+                key={c.id}
+                className="rounded-md bg-[var(--background)] border border-[var(--border)] px-3 py-2.5 shadow-sm"
+              >
+                <p className="text-sm leading-snug">{c.title}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      ))}
+    </div>
   );
 }
 
