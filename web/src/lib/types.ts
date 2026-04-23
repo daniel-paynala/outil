@@ -91,3 +91,16 @@ export type MyTask = CardSummary & {
   dependencies_count: number;
   children_count: number;
 };
+
+export type ProjectFile = {
+  id: string;
+  project_id: string;
+  path: string;
+  name: string;
+  size_bytes: number;
+  mime_type: string | null;
+  uploaded_by: string;
+  created_at: string;
+  updated_at: string;
+  uploader?: Pick<User, "id" | "email" | "name">;
+};

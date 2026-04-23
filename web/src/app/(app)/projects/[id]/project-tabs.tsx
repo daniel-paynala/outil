@@ -7,6 +7,7 @@ import type { LucideIcon } from "lucide-react";
 import {
   LayoutGrid,
   ListTodo,
+  Paperclip,
   BookOpen,
   GitBranch,
   KeyRound,
@@ -24,6 +25,7 @@ type Tab = {
 const TABS: Tab[] = [
   { key: "", label: "Aperçu", icon: LayoutGrid },
   { key: "tasks", label: "Tâches", icon: ListTodo },
+  { key: "documents", label: "Documents", icon: Paperclip },
   { key: "docs", label: "Documentation", icon: BookOpen, disabled: true },
   { key: "github", label: "GitHub", icon: GitBranch, disabled: true },
   { key: "vault", label: "Coffre", icon: KeyRound, disabled: true },

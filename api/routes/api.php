@@ -1,6 +1,7 @@
 <?php
 
 use App\Modules\Core\Http\Controllers\ProjectController;
+use App\Modules\Files\Http\Controllers\ProjectFileController;
 use App\Modules\Tasks\Http\Controllers\BoardController;
 use App\Modules\Tasks\Http\Controllers\LabelController;
 use App\Modules\Tasks\Http\Controllers\MyTasksController;
@@ -52,4 +53,10 @@ Route::middleware('supabase.auth')->group(function () {
     Route::delete('labels/{label}', [LabelController::class, 'destroy']);
     Route::post('cards/{card}/labels', [LabelController::class, 'attachToCard']);
     Route::delete('cards/{card}/labels/{label}', [LabelController::class, 'detachFromCard']);
+
+    // Files (Supabase Storage)
+    Route::get('projects/{project}/files', [ProjectFileController::class, 'index']);
+    Route::post('projects/{project}/files', [ProjectFileController::class, 'store']);
+    Route::get('files/{file}', [ProjectFileController::class, 'show']);
+    Route::delete('files/{file}', [ProjectFileController::class, 'destroy']);
 });
