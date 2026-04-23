@@ -126,6 +126,12 @@ export default function SearchClient() {
         </p>
       )}
 
+      {results?.warning && (
+        <p className="text-sm text-[var(--color-warning)] border border-[var(--color-warning)]/20 bg-[var(--color-warning)]/5 rounded px-3 py-2">
+          {results.warning}
+        </p>
+      )}
+
       {query.trim().length >= 2 && results && !loading && totalCount === 0 && (
         <p className="text-sm text-[var(--muted)] text-center py-10">
           Aucun résultat pour <span className="font-medium">{query}</span>.

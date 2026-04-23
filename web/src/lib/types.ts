@@ -261,4 +261,5 @@ export type SearchResults = {
   decisions: (SearchResult & { status: string })[];
   vault: (SearchResult & { category: string; username: string | null })[];
   files: (SearchResult & { mime_type: string | null })[];
+  warning?: string | null;
 };
