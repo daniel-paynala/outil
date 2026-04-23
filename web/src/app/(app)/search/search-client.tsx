@@ -17,8 +17,10 @@ import type { SearchResults } from "@/lib/types";
 
 const DEBOUNCE_MS = 250;
 
+type GroupKey = "cards" | "docs" | "decisions" | "vault" | "files";
+
 const GROUPS: {
-  key: keyof SearchResults;
+  key: GroupKey;
   label: string;
   icon: LucideIcon;
 }[] = [

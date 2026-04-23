@@ -13,6 +13,10 @@ use App\Modules\Vault\Models\VaultEntry;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\Log;
+use Throwable;
+use Illuminate\Support\Facades\Log;
+use Throwable;
 
 class SearchController extends Controller
 {
@@ -39,28 +43,61 @@ class SearchController extends Controller
             ->get(['id', 'name', 'slug', 'color'])
             ->keyBy('id');
 
+        $warning = null;
+
         return response()->json([
-            'cards' => $this->mapCards(
-                Card::search($q)->whereIn('project_id', $projectIds)->take(10)->get(),
-                $projects,
+            'cards' => $this->safe(
+                fn () => $this->mapCards(
+                    Card::search($q)->whereIn('project_id', $projectIds)->take(10)->get(),
+                    $projects,
+                ),
+                $warning,
             ),
-            'docs' => $this->mapDocs(
-                DocPage::search($q)->whereIn('project_id', $projectIds)->take(10)->get(),
-                $projects,
+            'docs' => $this->safe(
+                fn () => $this->mapDocs(
+                    DocPage::search($q)->whereIn('project_id', $projectIds)->take(10)->get(),
+                    $projects,
+                ),
+                $warning,
             ),
-            'decisions' => $this->mapDecisions(
-                Decision::search($q)->whereIn('project_id', $projectIds)->take(10)->get(),
-                $projects,
+            'decisions' => $this->safe(
+                fn () => $this->mapDecisions(
+                    Decision::search($q)->whereIn('project_id', $projectIds)->take(10)->get(),
+                    $projects,
+                ),
+                $warning,
             ),
-            'vault' => $this->mapVault(
-                VaultEntry::search($q)->whereIn('project_id', $projectIds)->take(10)->get(),
-                $projects,
+            'vault' => $this->safe(
+                fn () => $this->mapVault(
+                    VaultEntry::search($q)->whereIn('project_id', $projectIds)->take(10)->get(),
+                    $projects,
+                ),
+                $warning,
             ),
-            'files' => $this->mapFiles(
-                ProjectFile::search($q)->whereIn('project_id', $projectIds)->take(10)->get(),
-                $projects,
+            'files' => $this->safe(
+                fn () => $this->mapFiles(
+                    ProjectFile::search($q)->whereIn('project_id', $projectIds)->take(10)->get(),
+                    $projects,
+                ),
+                $warning,
             ),
+            'warning' => $warning,
         ]);
+    }
+
+    private function safe(callable $fn, ?string &$warning): array
+    {
+        try {
+            return $fn();
+        } catch (Throwable $e) {
+            Log::warning('Search engine call failed: '.$e->getMessage());
+            if ($warning === null) {
+                $warning = str_contains($e->getMessage(), 'Failed to connect')
+                    ? 'Moteur de recherche indisponible. Démarre Meilisearch : docker compose up -d'
+                    : 'Erreur moteur de recherche : '.$e->getMessage();
+            }
+            return [];
+        }
     }
 
     private function mapCards(Collection $cards, Collection $projects): array
@@ -147,6 +184,7 @@ class SearchController extends Controller
             'decisions' => [],
             'vault' => [],
             'files' => [],
+            'warning' => null,
         ];
     }
 }
