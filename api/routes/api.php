@@ -15,6 +15,7 @@ Route::middleware('supabase.auth')->group(function () {
     Route::get('/me', function (Request $request) {
         return response()->json([
             'id' => $request->attributes->get('supabase_user_id'),
+            'user' => $request->attributes->get('user'),
             'claims' => $request->attributes->get('supabase_user'),
         ]);
     });

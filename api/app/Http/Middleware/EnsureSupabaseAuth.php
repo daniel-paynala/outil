@@ -2,6 +2,7 @@
 
 namespace App\Http\Middleware;
 
+use App\Modules\Core\Services\SupabaseUserSync;
 use Closure;
 use Firebase\JWT\JWK;
 use Firebase\JWT\JWT;
@@ -13,6 +14,8 @@ use Symfony\Component\HttpFoundation\Response;
 
 class EnsureSupabaseAuth
 {
+    public function __construct(private readonly SupabaseUserSync $sync) {}
+
     public function handle(Request $request, Closure $next): Response
     {
         $token = $request->bearerToken();
@@ -31,8 +34,11 @@ class EnsureSupabaseAuth
         }
 
         $claims = (array) $decoded;
+        $user = $this->sync->syncFromClaims($claims);
+
         $request->attributes->set('supabase_user', $claims);
         $request->attributes->set('supabase_user_id', $claims['sub'] ?? null);
+        $request->attributes->set('user', $user);
 
         return $next($request);
     }
