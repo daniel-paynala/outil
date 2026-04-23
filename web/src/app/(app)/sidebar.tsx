@@ -56,7 +56,7 @@ export default function Sidebar({ email }: { email: string }) {
           priority
         />
         <div className="flex flex-col leading-tight">
-          <span className="text-sm font-semibold tracking-tight">outil</span>
+          <span className="text-sm font-semibold tracking-tight">Arche</span>
           <span className="text-[11px] text-[var(--muted)]">by Paynala</span>
         </div>
       </div>

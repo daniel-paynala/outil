@@ -13,8 +13,9 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "outil — Paynala",
-  description: "Plateforme interne Paynala : projets, code, documentation, secrets.",
+  title: "Arche — Paynala",
+  description:
+    "Arche — assembler, réaliser, conserver, harmoniser, échanger. Plateforme interne Paynala.",
 };
 
 export default function RootLayout({

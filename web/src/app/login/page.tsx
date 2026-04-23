@@ -45,9 +45,9 @@ export default function LoginPage() {
             height={44}
             priority
           />
-          <h1 className="mt-4 text-xl font-semibold tracking-tight">outil</h1>
+          <h1 className="mt-4 text-xl font-semibold tracking-tight">Arche</h1>
           <p className="text-sm text-[var(--muted)] mt-1">
-            Plateforme interne Paynala
+            Assembler · Réaliser · Conserver · Harmoniser · Échanger
           </p>
         </div>
 
