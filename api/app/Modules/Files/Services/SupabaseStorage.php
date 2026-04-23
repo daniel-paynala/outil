@@ -21,15 +21,28 @@ class SupabaseStorage
 
     public function ensureBucket(string $bucket = self::BUCKET): void
     {
-        $res = $this->client()->get("{$this->url}/storage/v1/bucket/{$bucket}");
+        $res = $this->client()->post("{$this->url}/storage/v1/bucket", [
+            'id' => $bucket,
+            'name' => $bucket,
+            'public' => false,
+        ]);
 
-        if ($res->status() === 404) {
-            $this->client()->post("{$this->url}/storage/v1/bucket", [
-                'id' => $bucket,
-                'name' => $bucket,
-                'public' => false,
-            ])->throw();
+        if ($res->successful()) {
+            return;
         }
+
+        // Treat "already exists" (409, or 400 w/ Duplicate) as success.
+        $body = $res->json() ?? [];
+        $message = strtolower(($body['message'] ?? '').' '.($body['error'] ?? ''));
+        if (
+            $res->status() === 409
+            || str_contains($message, 'already exists')
+            || str_contains($message, 'duplicate')
+        ) {
+            return;
+        }
+
+        $res->throw();
     }
 
     public function upload(string $path, string $contents, string $mime, string $bucket = self::BUCKET): void
