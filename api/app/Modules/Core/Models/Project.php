@@ -3,6 +3,8 @@
 namespace App\Modules\Core\Models;
 
 use App\Models\User;
+use App\Modules\Tasks\Models\Card;
+use App\Modules\Tasks\Models\Column;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -42,5 +44,15 @@ class Project extends Model
     public function hasMember(string $userId): bool
     {
         return $this->projectMembers()->where('user_id', $userId)->exists();
+    }
+
+    public function columns(): HasMany
+    {
+        return $this->hasMany(Column::class)->orderBy('position');
+    }
+
+    public function cards(): HasMany
+    {
+        return $this->hasMany(Card::class);
     }
 }

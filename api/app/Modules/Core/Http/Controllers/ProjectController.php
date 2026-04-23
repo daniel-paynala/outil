@@ -5,6 +5,7 @@ namespace App\Modules\Core\Http\Controllers;
 use App\Http\Controllers\Controller;
 use App\Modules\Core\Models\Project;
 use App\Modules\Core\Models\ProjectMember;
+use App\Modules\Tasks\Models\Column;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -48,6 +49,19 @@ class ProjectController extends Controller
                 'user_id' => $userId,
                 'role' => 'owner',
             ]);
+
+            $defaults = [
+                ['name' => 'À faire', 'position' => 0],
+                ['name' => 'En cours', 'position' => 1],
+                ['name' => 'Terminé', 'position' => 2],
+            ];
+            foreach ($defaults as $c) {
+                Column::create([
+                    'project_id' => $project->id,
+                    'name' => $c['name'],
+                    'position' => $c['position'],
+                ]);
+            }
 
             return $project;
         });
