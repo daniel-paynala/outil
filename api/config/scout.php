@@ -140,9 +140,26 @@ return [
         'host' => env('MEILISEARCH_HOST', 'http://localhost:7700'),
         'key' => env('MEILISEARCH_KEY'),
         'index-settings' => [
-            // 'users' => [
-            //     'filterableAttributes'=> ['id', 'name', 'email'],
-            // ],
+            'cards' => [
+                'filterableAttributes' => ['project_id'],
+                'sortableAttributes' => ['updated_at'],
+            ],
+            'doc_pages' => [
+                'filterableAttributes' => ['project_id'],
+                'sortableAttributes' => ['updated_at'],
+            ],
+            'decisions' => [
+                'filterableAttributes' => ['project_id', 'status'],
+                'sortableAttributes' => ['updated_at', 'number'],
+            ],
+            'vault_entries' => [
+                'filterableAttributes' => ['project_id', 'category'],
+                'sortableAttributes' => ['updated_at'],
+            ],
+            'project_files' => [
+                'filterableAttributes' => ['project_id'],
+                'sortableAttributes' => ['updated_at'],
+            ],
         ],
     ],
 

@@ -28,7 +28,7 @@ const NAV: NavItem[] = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
   { href: "/projects", label: "Projets", icon: FolderKanban },
   { href: "/my-tasks", label: "Mes tâches", icon: ListChecks },
-  { href: "/search", label: "Recherche", icon: Search, disabled: true },
+  { href: "/search", label: "Recherche", icon: Search },
   { href: "/snippets", label: "Snippets", icon: Code2, disabled: true },
   { href: "/agenda", label: "Agenda", icon: CalendarClock, disabled: true },
   { href: "/notifications", label: "Notifications", icon: Bell, disabled: true },

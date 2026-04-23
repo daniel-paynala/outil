@@ -9,10 +9,35 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\SoftDeletes;
+use Laravel\Scout\Searchable;
 
 class VaultEntry extends Model
 {
-    use HasUuids, SoftDeletes;
+    use HasUuids, Searchable, SoftDeletes;
+
+    public function searchableAs(): string
+    {
+        return 'vault_entries';
+    }
+
+    /**
+     * Only non-sensitive metadata is indexed — NEVER the encrypted secret.
+     *
+     * @return array<string, mixed>
+     */
+    public function toSearchableArray(): array
+    {
+        return [
+            'id' => $this->id,
+            'project_id' => $this->project_id,
+            'name' => $this->name,
+            'category' => $this->category,
+            'username' => $this->username,
+            'notes' => $this->notes,
+            'url' => $this->url,
+            'updated_at' => $this->updated_at?->timestamp,
+        ];
+    }
 
     protected $fillable = [
         'project_id',

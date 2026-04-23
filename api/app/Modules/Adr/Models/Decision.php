@@ -8,10 +8,35 @@ use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\SoftDeletes;
+use Laravel\Scout\Searchable;
 
 class Decision extends Model
 {
-    use HasUuids, SoftDeletes;
+    use HasUuids, Searchable, SoftDeletes;
+
+    public function searchableAs(): string
+    {
+        return 'decisions';
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    public function toSearchableArray(): array
+    {
+        return [
+            'id' => $this->id,
+            'project_id' => $this->project_id,
+            'number' => $this->number,
+            'title' => $this->title,
+            'context' => $this->context,
+            'decision' => $this->decision,
+            'consequences' => $this->consequences,
+            'alternatives' => $this->alternatives,
+            'status' => $this->status,
+            'updated_at' => $this->updated_at?->timestamp,
+        ];
+    }
 
     protected $fillable = [
         'project_id',

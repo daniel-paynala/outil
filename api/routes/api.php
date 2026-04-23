@@ -5,6 +5,7 @@ use App\Modules\Adr\Http\Controllers\DecisionController;
 use App\Modules\Core\Http\Controllers\ProjectController;
 use App\Modules\Docs\Http\Controllers\DocController;
 use App\Modules\Files\Http\Controllers\ProjectFileController;
+use App\Modules\Search\Http\Controllers\SearchController;
 use App\Modules\Tasks\Http\Controllers\BoardController;
 use App\Modules\Tasks\Http\Controllers\CommentController;
 use App\Modules\Tasks\Http\Controllers\LabelController;
@@ -34,6 +35,7 @@ Route::middleware('supabase.auth')->group(function () {
     Route::apiResource('projects', ProjectController::class);
 
     Route::get('me/tasks', [MyTasksController::class, 'index']);
+    Route::get('search', [SearchController::class, 'index']);
 
     // Tasks / Board
     Route::get('projects/{project}/columns', [BoardController::class, 'index']);

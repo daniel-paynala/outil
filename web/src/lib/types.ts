@@ -244,3 +244,21 @@ export type ActivityLog = {
   created_at: string;
   actor?: Pick<User, "id" | "email" | "name"> | null;
 };
+
+type SearchProjectBadge = { id: string; name: string; color: string };
+
+export type SearchResult = {
+  id: string;
+  title: string;
+  snippet?: string | null;
+  project: SearchProjectBadge | null;
+  href: string;
+};
+
+export type SearchResults = {
+  cards: SearchResult[];
+  docs: SearchResult[];
+  decisions: (SearchResult & { status: string })[];
+  vault: (SearchResult & { category: string; username: string | null })[];
+  files: (SearchResult & { mime_type: string | null })[];
+};
