@@ -1,6 +1,6 @@
 "use client";
 
-import { LayoutGrid, List, Link2, User, X } from "lucide-react";
+import { LayoutGrid, List, Link2, User, X, CalendarDays } from "lucide-react";
 import { clsx } from "clsx";
 import type { Label, ProjectMember } from "@/lib/types";
 
@@ -20,7 +20,7 @@ export const EMPTY_FILTERS: BoardFilters = {
   mineOnly: false,
 };
 
-export type ViewMode = "board" | "list";
+export type ViewMode = "board" | "list" | "calendar";
 
 export default function FiltersBar({
   filters,
@@ -138,35 +138,42 @@ export default function FiltersBar({
         </span>
 
         <div className="inline-flex rounded-md border border-[var(--border)] p-0.5">
-          <button
-            onClick={() => setView("board")}
-            aria-pressed={view === "board"}
-            title="Vue board"
-            className={clsx(
-              "inline-flex items-center gap-1 rounded px-2 py-1 text-xs",
-              view === "board"
-                ? "bg-[var(--color-neutral-200)] dark:bg-[var(--color-neutral-700)]"
-                : "text-[var(--muted)] hover:text-[var(--foreground)]",
-            )}
-          >
-            <LayoutGrid size={12} strokeWidth={2} />
-          </button>
-          <button
-            onClick={() => setView("list")}
-            aria-pressed={view === "list"}
-            title="Vue liste"
-            className={clsx(
-              "inline-flex items-center gap-1 rounded px-2 py-1 text-xs",
-              view === "list"
-                ? "bg-[var(--color-neutral-200)] dark:bg-[var(--color-neutral-700)]"
-                : "text-[var(--muted)] hover:text-[var(--foreground)]",
-            )}
-          >
-            <List size={12} strokeWidth={2} />
-          </button>
+          <ViewBtn current={view} value="board" onClick={setView} title="Vue board" Icon={LayoutGrid} />
+          <ViewBtn current={view} value="list" onClick={setView} title="Vue liste" Icon={List} />
+          <ViewBtn current={view} value="calendar" onClick={setView} title="Vue calendrier" Icon={CalendarDays} />
         </div>
       </div>
     </div>
+  );
+}
+
+function ViewBtn({
+  current,
+  value,
+  onClick,
+  title,
+  Icon,
+}: {
+  current: ViewMode;
+  value: ViewMode;
+  onClick: (v: ViewMode) => void;
+  title: string;
+  Icon: React.ComponentType<{ size?: number; strokeWidth?: number }>;
+}) {
+  return (
+    <button
+      onClick={() => onClick(value)}
+      aria-pressed={current === value}
+      title={title}
+      className={clsx(
+        "inline-flex items-center gap-1 rounded px-2 py-1 text-xs",
+        current === value
+          ? "bg-[var(--color-neutral-200)] dark:bg-[var(--color-neutral-700)]"
+          : "text-[var(--muted)] hover:text-[var(--foreground)]",
+      )}
+    >
+      <Icon size={12} strokeWidth={2} />
+    </button>
   );
 }
 

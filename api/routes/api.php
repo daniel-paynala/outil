@@ -6,6 +6,7 @@ use App\Modules\Core\Http\Controllers\ProjectController;
 use App\Modules\Docs\Http\Controllers\DocController;
 use App\Modules\Files\Http\Controllers\ProjectFileController;
 use App\Modules\Tasks\Http\Controllers\BoardController;
+use App\Modules\Tasks\Http\Controllers\CommentController;
 use App\Modules\Tasks\Http\Controllers\LabelController;
 use App\Modules\Tasks\Http\Controllers\MyTasksController;
 use App\Modules\Time\Http\Controllers\TimeController;
@@ -50,6 +51,12 @@ Route::middleware('supabase.auth')->group(function () {
     // Dependencies
     Route::post('cards/{card}/dependencies', [BoardController::class, 'addDependency']);
     Route::delete('cards/{card}/dependencies/{dep}', [BoardController::class, 'removeDependency']);
+
+    // Card comments
+    Route::get('cards/{card}/comments', [CommentController::class, 'index']);
+    Route::post('cards/{card}/comments', [CommentController::class, 'store']);
+    Route::patch('comments/{comment}', [CommentController::class, 'update']);
+    Route::delete('comments/{comment}', [CommentController::class, 'destroy']);
 
     // Labels
     Route::get('projects/{project}/labels', [LabelController::class, 'index']);

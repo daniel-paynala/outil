@@ -33,9 +33,9 @@ class BoardController extends Controller
             ->orderBy('position')
             ->get();
 
-        // add dependencies_count + children_count per card
+        // add counts per card
         foreach ($columns as $col) {
-            $col->cards->loadCount(['dependencies', 'children']);
+            $col->cards->loadCount(['dependencies', 'children', 'comments']);
         }
 
         return response()->json($columns);
@@ -55,6 +55,7 @@ class BoardController extends Controller
             'dependents:id,title,column_id',
             'parent:id,title',
         ]);
+        $card->loadCount('comments');
 
         return response()->json($card);
     }

@@ -2,7 +2,7 @@
 
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { Trash2, Link2, GitBranch, Calendar, Clock } from "lucide-react";
+import { Trash2, Link2, GitBranch, Calendar, Clock, MessageSquare } from "lucide-react";
 import { clsx } from "clsx";
 import type { CardSummary } from "@/lib/types";
 import { apiFetch } from "@/lib/api/client";
@@ -134,6 +134,16 @@ export default function BoardCard({
               >
                 <GitBranch size={10} strokeWidth={2} />
                 {card.children_count}
+              </span>
+            )}
+
+            {(card.comments_count ?? 0) > 0 && (
+              <span
+                className="inline-flex items-center gap-1 text-[10px] text-[var(--muted)]"
+                title="Commentaires"
+              >
+                <MessageSquare size={10} strokeWidth={2} />
+                {card.comments_count}
               </span>
             )}
           </div>

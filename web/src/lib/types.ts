@@ -43,6 +43,17 @@ export type CardSummary = {
   assignee?: Pick<User, "id" | "email" | "name"> | null;
   dependencies_count?: number;
   children_count?: number;
+  comments_count?: number;
+};
+
+export type CardComment = {
+  id: string;
+  card_id: string;
+  user_id: string;
+  content: string;
+  created_at: string;
+  updated_at: string;
+  user?: Pick<User, "id" | "email" | "name">;
 };
 
 export type Card = CardSummary;
@@ -64,6 +75,7 @@ export type CardDetail = CardSummary & {
   }>;
   dependencies: Array<{ id: string; title: string; column_id: string }>;
   dependents: Array<{ id: string; title: string; column_id: string }>;
+  comments_count: number;
 };
 
 export type BoardColumn = {

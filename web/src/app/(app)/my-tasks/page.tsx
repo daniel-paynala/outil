@@ -116,7 +116,7 @@ function Bucket({
         {tasks.map((t) => (
           <li key={t.id}>
             <Link
-              href={`/projects/${t.project.id}/tasks`}
+              href={`/projects/${t.project.id}/tasks?card=${t.id}`}
               className="flex items-center gap-3 px-4 py-3 hover:bg-[var(--color-neutral-100)] dark:hover:bg-[var(--color-neutral-800)]/50"
             >
               <span

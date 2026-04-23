@@ -13,8 +13,10 @@ import {
   Link2,
   GitBranch,
   Tag,
+  MessageSquare,
 } from "lucide-react";
 import type {
+  CardComment,
   CardDetail,
   CardSummary,
   Label as LabelType,
@@ -368,8 +370,134 @@ export default function CardDrawer({
             </ul>
           </Section>
         )}
+
+        <CommentsSection
+          cardId={detail.id}
+          onCountChange={(n) => {
+            setDetail((d) => (d ? { ...d, comments_count: n } : d));
+            onUpdated({ ...(detail as CardSummary), comments_count: n });
+          }}
+        />
       </div>
     </Shell>
+  );
+}
+
+function CommentsSection({
+  cardId,
+  onCountChange,
+}: {
+  cardId: string;
+  onCountChange: (n: number) => void;
+}) {
+  const [comments, setComments] = useState<CardComment[] | null>(null);
+  const [content, setContent] = useState("");
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    (async () => {
+      const res = await apiFetch(`/api/cards/${cardId}/comments`);
+      if (res.ok) {
+        const list = (await res.json()) as CardComment[];
+        setComments(list);
+        onCountChange(list.length);
+      }
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cardId]);
+
+  async function addComment(e: React.FormEvent) {
+    e.preventDefault();
+    if (!content.trim()) return;
+    setLoading(true);
+    const res = await apiFetch(`/api/cards/${cardId}/comments`, {
+      method: "POST",
+      body: JSON.stringify({ content: content.trim() }),
+    });
+    setLoading(false);
+    if (!res.ok) return;
+    const c = (await res.json()) as CardComment;
+    const next = [...(comments ?? []), c];
+    setComments(next);
+    onCountChange(next.length);
+    setContent("");
+  }
+
+  async function deleteComment(id: string) {
+    if (!confirm("Supprimer ce commentaire ?")) return;
+    const res = await apiFetch(`/api/comments/${id}`, { method: "DELETE" });
+    if (!res.ok) return;
+    const next = (comments ?? []).filter((c) => c.id !== id);
+    setComments(next);
+    onCountChange(next.length);
+  }
+
+  return (
+    <section>
+      <h3 className="flex items-center gap-1.5 text-xs font-medium uppercase tracking-wider text-[var(--muted)] mb-3">
+        <MessageSquare size={12} strokeWidth={2} />
+        Commentaires {comments && `(${comments.length})`}
+      </h3>
+
+      {comments === null ? (
+        <p className="text-xs text-[var(--muted)]">Chargement…</p>
+      ) : (
+        <ul className="space-y-3 mb-3">
+          {comments.map((c) => (
+            <li
+              key={c.id}
+              className="rounded-md border border-[var(--border)] bg-[var(--surface)] p-3 group"
+            >
+              <div className="flex items-center gap-2 mb-1">
+                <span className="size-5 rounded-full bg-[var(--color-neutral-300)] dark:bg-[var(--color-neutral-600)] flex items-center justify-center text-[10px] font-medium shrink-0">
+                  {c.user?.email.charAt(0).toUpperCase() ?? "?"}
+                </span>
+                <span className="text-xs font-medium">
+                  {c.user?.email ?? "—"}
+                </span>
+                <span className="text-[11px] text-[var(--muted)]">
+                  {new Date(c.created_at).toLocaleString("fr-FR", {
+                    day: "numeric",
+                    month: "short",
+                    hour: "2-digit",
+                    minute: "2-digit",
+                  })}
+                </span>
+                <button
+                  onClick={() => deleteComment(c.id)}
+                  className="ml-auto opacity-0 group-hover:opacity-100 p-1 text-[var(--muted)] hover:text-[var(--color-danger)]"
+                  title="Supprimer"
+                >
+                  <Trash2 size={11} />
+                </button>
+              </div>
+              <p className="text-sm whitespace-pre-wrap">{c.content}</p>
+            </li>
+          ))}
+        </ul>
+      )}
+
+      <form onSubmit={addComment} className="space-y-2">
+        <textarea
+          value={content}
+          onChange={(e) => setContent(e.target.value)}
+          rows={2}
+          placeholder="Écrire un commentaire…"
+          className="w-full rounded-md border border-[var(--border)] bg-[var(--background)] px-3 py-2 text-sm resize-y"
+          onKeyDown={(e) => {
+            if ((e.metaKey || e.ctrlKey) && e.key === "Enter") addComment(e);
+          }}
+        />
+        <button
+          type="submit"
+          disabled={loading || !content.trim()}
+          className="inline-flex items-center gap-1 rounded-md bg-[var(--color-brand-red)] hover:bg-[var(--color-brand-red-600)] text-white px-3 py-1.5 text-xs font-medium disabled:opacity-50"
+        >
+          {loading && <Loader2 size={11} className="animate-spin" />}
+          Commenter
+        </button>
+      </form>
+    </section>
   );
 }
 

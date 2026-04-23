@@ -67,6 +67,11 @@ class Card extends Model
         return $this->hasMany(Card::class, 'parent_card_id');
     }
 
+    public function comments(): HasMany
+    {
+        return $this->hasMany(CardComment::class)->orderBy('created_at');
+    }
+
     public function labels(): BelongsToMany
     {
         return $this->belongsToMany(Label::class, 'card_labels')->withTimestamps();

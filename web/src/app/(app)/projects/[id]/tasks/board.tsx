@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useCallback, useMemo, useEffect } from "react";
+import { useRouter, useSearchParams, usePathname } from "next/navigation";
 import {
   DndContext,
   DragOverlay,
@@ -34,6 +35,7 @@ import FiltersBar, {
   type ViewMode,
 } from "./filters-bar";
 import ListView from "./list-view";
+import CalendarView from "./calendar-view";
 
 export default function Board({
   projectId,
@@ -48,15 +50,34 @@ export default function Board({
   initialLabels: Label[];
   currentUserId: string;
 }) {
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+
   const [columns, setColumns] = useState<BoardColumn[]>(initialColumns);
   const [labels, setLabels] = useState<Label[]>(initialLabels);
   const [activeCard, setActiveCard] = useState<CardSummary | null>(null);
-  const [openCardId, setOpenCardId] = useState<string | null>(null);
+  const [openCardId, setOpenCardIdState] = useState<string | null>(
+    () => searchParams.get("card"),
+  );
   const [mounted, setMounted] = useState(false);
   const [filters, setFilters] = useState<BoardFilters>(EMPTY_FILTERS);
   const [view, setView] = useState<ViewMode>("board");
 
   useEffect(() => setMounted(true), []);
+
+  // Sync URL ↔ openCardId (deep-link support)
+  const setOpenCardId = useCallback(
+    (id: string | null) => {
+      setOpenCardIdState(id);
+      const params = new URLSearchParams(searchParams.toString());
+      if (id) params.set("card", id);
+      else params.delete("card");
+      const qs = params.toString();
+      router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
+    },
+    [router, pathname, searchParams],
+  );
 
   const filteredColumns = useMemo(
     () => applyFilters(columns, filters, currentUserId),
@@ -272,10 +293,12 @@ export default function Board({
     <>
       {filterBar}
 
-      {view === "board" ? (
-        boardView
-      ) : (
+      {view === "board" && boardView}
+      {view === "list" && (
         <ListView columns={filteredColumns} onOpenCard={setOpenCardId} />
+      )}
+      {view === "calendar" && (
+        <CalendarView columns={filteredColumns} onOpenCard={setOpenCardId} />
       )}
 
       {openCardId && (
