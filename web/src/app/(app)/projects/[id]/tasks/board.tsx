@@ -27,25 +27,50 @@ import BoardCard from "./card";
 import BoardColumnView from "./column";
 import NewColumnButton from "./new-column-button";
 import CardDrawer from "./card-drawer";
+import FiltersBar, {
+  EMPTY_FILTERS,
+  applyFilters,
+  type BoardFilters,
+  type ViewMode,
+} from "./filters-bar";
+import ListView from "./list-view";
 
 export default function Board({
   projectId,
   initialColumns,
   members,
   initialLabels,
+  currentUserId,
 }: {
   projectId: string;
   initialColumns: BoardColumn[];
   members: ProjectMember[];
   initialLabels: Label[];
+  currentUserId: string;
 }) {
   const [columns, setColumns] = useState<BoardColumn[]>(initialColumns);
   const [labels, setLabels] = useState<Label[]>(initialLabels);
   const [activeCard, setActiveCard] = useState<CardSummary | null>(null);
   const [openCardId, setOpenCardId] = useState<string | null>(null);
   const [mounted, setMounted] = useState(false);
+  const [filters, setFilters] = useState<BoardFilters>(EMPTY_FILTERS);
+  const [view, setView] = useState<ViewMode>("board");
 
   useEffect(() => setMounted(true), []);
+
+  const filteredColumns = useMemo(
+    () => applyFilters(columns, filters, currentUserId),
+    [columns, filters, currentUserId],
+  );
+
+  const totalCount = useMemo(
+    () => columns.reduce((n, c) => n + c.cards.length, 0),
+    [columns],
+  );
+  const filteredCount = useMemo(
+    () => filteredColumns.reduce((n, c) => n + c.cards.length, 0),
+    [filteredColumns],
+  );
 
   const firstColumnId = useMemo(
     () => (columns.length > 0 ? columns[0].id : null),
@@ -187,43 +212,71 @@ export default function Board({
     );
   }
 
+  const filterBar = (
+    <FiltersBar
+      filters={filters}
+      setFilters={setFilters}
+      view={view}
+      setView={setView}
+      members={members}
+      labels={labels}
+      cardCount={filteredCount}
+      totalCount={totalCount}
+    />
+  );
+
   if (!mounted) {
-    return <BoardSkeleton columns={columns} />;
+    return (
+      <>
+        {filterBar}
+        <BoardSkeleton columns={filteredColumns} />
+      </>
+    );
   }
+
+  const boardView = (
+    <DndContext
+      sensors={sensors}
+      collisionDetection={closestCorners}
+      onDragStart={onDragStart}
+      onDragOver={onDragOver}
+      onDragEnd={onDragEnd}
+    >
+      <div className="flex gap-3 overflow-x-auto pb-4 -mx-8 px-8">
+        {filteredColumns.map((col) => (
+          <SortableContext
+            key={col.id}
+            items={col.cards.map((c) => c.id)}
+            strategy={verticalListSortingStrategy}
+          >
+            <BoardColumnView
+              column={col}
+              onAddCard={(card) => onAddCard(col.id, card)}
+              onDeleteCard={onDeleteCard}
+              onDeleteColumn={() => onDeleteColumn(col.id)}
+              onOpenCard={setOpenCardId}
+            />
+          </SortableContext>
+        ))}
+
+        <NewColumnButton projectId={projectId} onCreated={onAddColumn} />
+      </div>
+
+      <DragOverlay>
+        {activeCard ? <BoardCard card={activeCard} overlay /> : null}
+      </DragOverlay>
+    </DndContext>
+  );
 
   return (
     <>
-      <DndContext
-        sensors={sensors}
-        collisionDetection={closestCorners}
-        onDragStart={onDragStart}
-        onDragOver={onDragOver}
-        onDragEnd={onDragEnd}
-      >
-        <div className="flex gap-3 overflow-x-auto pb-4 -mx-8 px-8">
-          {columns.map((col) => (
-            <SortableContext
-              key={col.id}
-              items={col.cards.map((c) => c.id)}
-              strategy={verticalListSortingStrategy}
-            >
-              <BoardColumnView
-                column={col}
-                onAddCard={(card) => onAddCard(col.id, card)}
-                onDeleteCard={onDeleteCard}
-                onDeleteColumn={() => onDeleteColumn(col.id)}
-                onOpenCard={setOpenCardId}
-              />
-            </SortableContext>
-          ))}
+      {filterBar}
 
-          <NewColumnButton projectId={projectId} onCreated={onAddColumn} />
-        </div>
-
-        <DragOverlay>
-          {activeCard ? <BoardCard card={activeCard} overlay /> : null}
-        </DragOverlay>
-      </DndContext>
+      {view === "board" ? (
+        boardView
+      ) : (
+        <ListView columns={filteredColumns} onOpenCard={setOpenCardId} />
+      )}
 
       {openCardId && (
         <CardDrawer

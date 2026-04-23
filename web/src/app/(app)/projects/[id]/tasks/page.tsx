@@ -1,4 +1,5 @@
 import { apiJson } from "@/lib/api/server";
+import { createClient } from "@/lib/supabase/server";
 import type { BoardColumn, Label, ProjectDetail } from "@/lib/types";
 import Board from "./board";
 
@@ -8,6 +9,11 @@ export default async function TasksPage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
+
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
 
   const [columns, project, labels] = await Promise.all([
     apiJson<BoardColumn[]>(`/api/projects/${id}/columns`),
@@ -21,6 +27,7 @@ export default async function TasksPage({
       initialColumns={columns}
       members={project.members ?? []}
       initialLabels={labels}
+      currentUserId={user?.id ?? ""}
     />
   );
 }
