@@ -6,6 +6,7 @@ use App\Modules\Core\Http\Controllers\ProjectController;
 use App\Modules\Docs\Http\Controllers\DocController;
 use App\Modules\Files\Http\Controllers\ProjectFileController;
 use App\Modules\Github\Http\Controllers\GithubController;
+use App\Modules\Roadmap\Http\Controllers\RoadmapController;
 use App\Modules\Search\Http\Controllers\SearchController;
 use App\Modules\Tasks\Http\Controllers\BoardController;
 use App\Modules\Tasks\Http\Controllers\CommentController;
@@ -120,4 +121,18 @@ Route::middleware('supabase.auth')->group(function () {
     Route::delete('github/repos/{repo}', [GithubController::class, 'destroy']);
     Route::post('github/repos/{repo}/sync', [GithubController::class, 'sync']);
     Route::get('projects/{project}/github/commits', [GithubController::class, 'commits']);
+
+    // Roadmap (items + releases, multi-views)
+    Route::get('projects/{project}/roadmap', [RoadmapController::class, 'index']);
+    Route::post('projects/{project}/roadmap', [RoadmapController::class, 'store']);
+    Route::get('roadmap-items/{item}', [RoadmapController::class, 'show']);
+    Route::patch('roadmap-items/{item}', [RoadmapController::class, 'update']);
+    Route::delete('roadmap-items/{item}', [RoadmapController::class, 'destroy']);
+    Route::post('projects/{project}/roadmap/move', [RoadmapController::class, 'move']);
+    Route::post('roadmap-items/{item}/cards', [RoadmapController::class, 'attachCard']);
+    Route::delete('roadmap-items/{item}/cards/{cardId}', [RoadmapController::class, 'detachCard']);
+    // Releases
+    Route::post('projects/{project}/releases', [RoadmapController::class, 'storeRelease']);
+    Route::patch('releases/{release}', [RoadmapController::class, 'updateRelease']);
+    Route::delete('releases/{release}', [RoadmapController::class, 'destroyRelease']);
 });

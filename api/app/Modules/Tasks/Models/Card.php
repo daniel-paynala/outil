@@ -117,4 +117,12 @@ class Card extends Model
             'card_id',
         )->withTimestamps();
     }
+
+    public function roadmapItems(): BelongsToMany
+    {
+        return $this->belongsToMany(
+            \App\Modules\Roadmap\Models\RoadmapItem::class,
+            'card_roadmap_items',
+        )->withTimestamps();
+    }
 }

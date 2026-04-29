@@ -14,6 +14,7 @@ import {
   Timer,
   ScrollText,
   Activity,
+  Map,
 } from "lucide-react";
 
 type Tab = {
@@ -26,6 +27,7 @@ type Tab = {
 const TABS: Tab[] = [
   { key: "", label: "Aperçu", icon: LayoutGrid },
   { key: "tasks", label: "Tâches", icon: ListTodo },
+  { key: "roadmap", label: "Roadmap", icon: Map },
   { key: "documents", label: "Documents", icon: Paperclip },
   { key: "docs", label: "Documentation", icon: BookOpen },
   { key: "vault", label: "Coffre", icon: KeyRound },

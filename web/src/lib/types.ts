@@ -295,3 +295,55 @@ export type GithubCommit = {
   created_at: string;
   repo?: Pick<GithubRepo, "id" | "full_name" | "platform">;
 };
+
+// ── Roadmap ─────────────────────────────────────────────────────────────
+
+export type RoadmapHorizon = "now" | "next" | "later" | "done";
+export type RoadmapEffort = "S" | "M" | "L" | "XL";
+
+export type Release = {
+  id: string;
+  project_id: string;
+  name: string;
+  description: string | null;
+  shipped_at: string | null;
+  color: string;
+  created_by: string;
+  created_at: string;
+  updated_at: string;
+  items_count?: number;
+};
+
+export type RoadmapItem = {
+  id: string;
+  project_id: string;
+  release_id: string | null;
+  owner_id: string | null;
+  title: string;
+  description: string | null;
+  horizon: RoadmapHorizon;
+  position: number;
+  effort: RoadmapEffort | null;
+  target_date: string | null;
+  tags: string[] | null;
+  created_by: string;
+  updated_by: string | null;
+  created_at: string;
+  updated_at: string;
+  cards_count?: number;
+  owner?: Pick<User, "id" | "email" | "name"> | null;
+  release?: Pick<Release, "id" | "name" | "color" | "shipped_at"> | null;
+};
+
+export type RoadmapPayload = {
+  items: RoadmapItem[];
+  releases: Release[];
+};
+
+export type RoadmapView =
+  | "board"
+  | "timeline"
+  | "releases"
+  | "list"
+  | "calendar"
+  | "mindmap";

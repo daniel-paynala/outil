@@ -15,8 +15,6 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Log;
 use Throwable;
-use Illuminate\Support\Facades\Log;
-use Throwable;
 
 class SearchController extends Controller
 {
