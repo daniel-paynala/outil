@@ -65,8 +65,11 @@ echo "  ↳ Installation PHP $PHP_VER"
 apt-get install -y -qq \
   "php${PHP_VER}-fpm" "php${PHP_VER}-cli" "php${PHP_VER}-common" \
   "php${PHP_VER}-pgsql" "php${PHP_VER}-mbstring" "php${PHP_VER}-xml" "php${PHP_VER}-bcmath" \
-  "php${PHP_VER}-curl" "php${PHP_VER}-zip" "php${PHP_VER}-gd" "php${PHP_VER}-intl" \
-  "php${PHP_VER}-redis" "php${PHP_VER}-opcache"
+  "php${PHP_VER}-curl" "php${PHP_VER}-zip" "php${PHP_VER}-gd" "php${PHP_VER}-intl"
+# opcache est inclus dans php-common à partir de PHP 8.5, package séparé sinon
+apt-get install -y -qq "php${PHP_VER}-opcache" 2>/dev/null || true
+# redis : selon distrib, package versionné ou meta-package
+apt-get install -y -qq "php${PHP_VER}-redis" 2>/dev/null || apt-get install -y -qq php-redis
 
 # Composer
 if ! command -v composer >/dev/null; then
