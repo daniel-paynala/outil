@@ -43,8 +43,13 @@ apt-get install -y -qq nginx
 systemctl enable --now nginx
 
 echo "▶ 5/9  PHP 8.4 + extensions Laravel"
-add-apt-repository -y ppa:ondrej/php
-apt-get update -qq
+# Détection Ubuntu : 25.04+ a PHP 8.4 nativement, sinon PPA Ondrej (Noble 24.04 et avant)
+UBUNTU_VERSION="$(lsb_release -rs 2>/dev/null | cut -d. -f1)"
+if [ "${UBUNTU_VERSION:-0}" -lt 25 ]; then
+  echo "  ↳ Ubuntu < 25 : ajout de la PPA Ondrej"
+  add-apt-repository -y ppa:ondrej/php
+  apt-get update -qq
+fi
 apt-get install -y -qq \
   php8.4-fpm php8.4-cli php8.4-common \
   php8.4-pgsql php8.4-mbstring php8.4-xml php8.4-bcmath \
