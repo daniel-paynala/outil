@@ -42,19 +42,31 @@ echo "▶ 4/9  Nginx"
 apt-get install -y -qq nginx
 systemctl enable --now nginx
 
-echo "▶ 5/9  PHP 8.4 + extensions Laravel"
-# Détection Ubuntu : 25.04+ a PHP 8.4 nativement, sinon PPA Ondrej (Noble 24.04 et avant)
-UBUNTU_VERSION="$(lsb_release -rs 2>/dev/null | cut -d. -f1)"
-if [ "${UBUNTU_VERSION:-0}" -lt 25 ]; then
-  echo "  ↳ Ubuntu < 25 : ajout de la PPA Ondrej"
+echo "▶ 5/9  PHP + extensions Laravel"
+# Choix de la version PHP :
+#   - Ubuntu 26.04 (Resolute) : PHP 8.5 natif
+#   - Ubuntu 25.04 / 25.10    : PHP 8.4 natif
+#   - Ubuntu 24.04 LTS Noble  : PHP 8.3 natif (8.4 via PPA Ondrej)
+UBUNTU_VERSION_FULL="$(lsb_release -rs 2>/dev/null || echo 0)"
+UBUNTU_MAJOR="$(echo "$UBUNTU_VERSION_FULL" | cut -d. -f1)"
+
+if [ "${UBUNTU_MAJOR:-0}" -ge 26 ]; then
+  PHP_VER="8.5"
+elif [ "${UBUNTU_MAJOR:-0}" -ge 25 ]; then
+  PHP_VER="8.4"
+else
+  echo "  ↳ Ubuntu < 25 : ajout de la PPA Ondrej pour PHP 8.4"
   add-apt-repository -y ppa:ondrej/php
   apt-get update -qq
+  PHP_VER="8.4"
 fi
+echo "  ↳ Installation PHP $PHP_VER"
+
 apt-get install -y -qq \
-  php8.4-fpm php8.4-cli php8.4-common \
-  php8.4-pgsql php8.4-mbstring php8.4-xml php8.4-bcmath \
-  php8.4-curl php8.4-zip php8.4-gd php8.4-intl \
-  php8.4-redis php8.4-opcache
+  "php${PHP_VER}-fpm" "php${PHP_VER}-cli" "php${PHP_VER}-common" \
+  "php${PHP_VER}-pgsql" "php${PHP_VER}-mbstring" "php${PHP_VER}-xml" "php${PHP_VER}-bcmath" \
+  "php${PHP_VER}-curl" "php${PHP_VER}-zip" "php${PHP_VER}-gd" "php${PHP_VER}-intl" \
+  "php${PHP_VER}-redis" "php${PHP_VER}-opcache"
 
 # Composer
 if ! command -v composer >/dev/null; then
@@ -64,7 +76,7 @@ if ! command -v composer >/dev/null; then
 fi
 
 # PHP-FPM tuning t3.micro
-PHP_FPM_POOL="/etc/php/8.4/fpm/pool.d/www.conf"
+PHP_FPM_POOL="/etc/php/${PHP_VER}/fpm/pool.d/www.conf"
 if [ -f "$PHP_FPM_POOL" ]; then
   sed -i 's/^pm = .*/pm = ondemand/' "$PHP_FPM_POOL"
   sed -i 's/^pm.max_children = .*/pm.max_children = 4/' "$PHP_FPM_POOL"
@@ -73,15 +85,24 @@ if [ -f "$PHP_FPM_POOL" ]; then
 fi
 
 # php.ini : upload limit
-PHP_INI="/etc/php/8.4/fpm/php.ini"
+PHP_INI="/etc/php/${PHP_VER}/fpm/php.ini"
 if [ -f "$PHP_INI" ]; then
   sed -i 's/^upload_max_filesize = .*/upload_max_filesize = 50M/' "$PHP_INI"
   sed -i 's/^post_max_size = .*/post_max_size = 50M/' "$PHP_INI"
   sed -i 's/^memory_limit = .*/memory_limit = 256M/' "$PHP_INI"
 fi
 
-systemctl enable --now php8.4-fpm
-systemctl restart php8.4-fpm
+systemctl enable --now "php${PHP_VER}-fpm"
+systemctl restart "php${PHP_VER}-fpm"
+
+# Adapter nginx.conf pour pointer sur le bon socket FPM (utilisé après l'étape 2 du README)
+NGINX_SITE="/etc/nginx/sites-available/arche"
+if [ -f "$NGINX_SITE" ]; then
+  sed -i "s|/run/php/php[0-9]\\+\\.[0-9]\\+-fpm\\.sock|/run/php/php${PHP_VER}-fpm.sock|g" "$NGINX_SITE"
+  nginx -t >/dev/null 2>&1 && systemctl reload nginx || true
+fi
+# Mémoriser pour les redéploiements
+echo "$PHP_VER" > /etc/arche-php-version
 
 echo "▶ 6/9  Node 24 LTS via NodeSource + PM2"
 if ! command -v node >/dev/null || ! node --version | grep -q "^v24"; then

@@ -36,7 +36,8 @@ chmod -R 775 storage bootstrap/cache
 sudo chown -R www-data:www-data storage bootstrap/cache 2>/dev/null || true
 
 # Reload PHP-FPM (charge nouveau code OPcache)
-sudo systemctl reload php8.4-fpm
+PHP_VER="$(cat /etc/arche-php-version 2>/dev/null || echo 8.5)"
+sudo systemctl reload "php${PHP_VER}-fpm"
 
 # Redémarrage queue worker (s'il est monté en service)
 sudo systemctl restart arche-queue 2>/dev/null || echo "  (arche-queue service pas encore configuré, ok)"
