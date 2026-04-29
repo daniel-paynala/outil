@@ -1,3 +1,9 @@
+export type ProjectUserStats = {
+  todo: number; // tâches assignées dans la 1ère colonne
+  doing: number; // tâches assignées dans les colonnes intermédiaires
+  done: number; // tâches assignées dans la dernière colonne
+};
+
 export type Project = {
   id: string;
   name: string;
@@ -8,6 +14,7 @@ export type Project = {
   created_at: string;
   updated_at: string;
   deleted_at: string | null;
+  user_stats?: ProjectUserStats;
 };
 
 export type User = {

@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Modules\Activity\Services\ActivityLogger;
 use App\Modules\Core\Models\Project;
 use App\Modules\Core\Models\ProjectMember;
+use App\Modules\Tasks\Models\Card;
 use App\Modules\Tasks\Models\Column;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -24,6 +25,45 @@ class ProjectController extends Controller
             ->whereHas('projectMembers', fn ($q) => $q->where('user_id', $userId))
             ->orderBy('name')
             ->get();
+
+        // Compute per-user task stats by column position (first = todo, last = done, middle = doing)
+        $projectIds = $projects->pluck('id')->all();
+
+        $columnsByProject = Column::whereIn('project_id', $projectIds)
+            ->orderBy('position')
+            ->get(['id', 'project_id', 'position'])
+            ->groupBy('project_id');
+
+        $cardCountsByColumn = Card::whereIn('project_id', $projectIds)
+            ->where('assigned_to', $userId)
+            ->whereNull('deleted_at')
+            ->groupBy('column_id')
+            ->select('column_id', DB::raw('count(*) as count'))
+            ->pluck('count', 'column_id');
+
+        foreach ($projects as $project) {
+            $cols = $columnsByProject->get($project->id);
+            $stats = ['todo' => 0, 'doing' => 0, 'done' => 0];
+            if ($cols && $cols->count() > 0) {
+                $colIds = $cols->pluck('id')->all();
+                $firstId = $colIds[0];
+                $lastId = end($colIds);
+                foreach ($colIds as $cid) {
+                    $count = (int) ($cardCountsByColumn[$cid] ?? 0);
+                    if ($count === 0) continue;
+                    if ($cid === $firstId && count($colIds) > 1) {
+                        $stats['todo'] += $count;
+                    } elseif ($cid === $lastId && count($colIds) > 1) {
+                        $stats['done'] += $count;
+                    } elseif (count($colIds) === 1) {
+                        $stats['todo'] += $count;
+                    } else {
+                        $stats['doing'] += $count;
+                    }
+                }
+            }
+            $project->user_stats = $stats;
+        }
 
         return response()->json($projects);
     }

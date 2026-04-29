@@ -25,6 +25,7 @@ import { clsx } from "clsx";
 import { createClient } from "@/lib/supabase/server";
 import { apiJson } from "@/lib/api/server";
 import type { MyTask, Project } from "@/lib/types";
+import ProjectStatsPills from "@/core/widgets/project-stats-pills";
 
 type ModuleEntry = {
   name: string;
@@ -230,9 +231,9 @@ export default async function DashboardPage() {
                         {p.description}
                       </p>
                     )}
-                    <p className="text-[11px] text-[var(--muted)] font-mono mt-2">
-                      {p.slug}
-                    </p>
+                    <div className="mt-2">
+                      <ProjectStatsPills stats={p.user_stats} size="sm" />
+                    </div>
                   </div>
                 </div>
               </Link>
