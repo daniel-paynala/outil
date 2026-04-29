@@ -1,0 +1,22 @@
+[Unit]
+Description=Arche — Laravel queue worker
+After=network.target redis-server.service
+
+[Service]
+Type=simple
+User=www-data
+Group=www-data
+Restart=always
+RestartSec=5
+WorkingDirectory=/var/www/arche/source/api
+ExecStart=/usr/bin/php artisan queue:work --tries=3 --max-time=3600 --sleep=3
+StandardOutput=append:/var/log/arche-queue.log
+StandardError=append:/var/log/arche-queue.log
+
+# Lower priority (laisse PHP-FPM et Next.js passer)
+Nice=10
+IOSchedulingClass=2
+IOSchedulingPriority=4
+
+[Install]
+WantedBy=multi-user.target
