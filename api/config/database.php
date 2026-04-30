@@ -94,7 +94,12 @@ return [
             'prefix' => '',
             'prefix_indexes' => true,
             'search_path' => 'public',
-            'sslmode' => 'prefer',
+            'sslmode' => env('DB_SSLMODE', 'prefer'),
+            // Supabase pooler port 6543 = pgbouncer transaction mode : pas de prepared
+            // statements server-side (sinon "prepared statement does not exist" intermittent).
+            'options' => [
+                PDO::ATTR_EMULATE_PREPARES => true,
+            ],
         ],
 
         'sqlsrv' => [
