@@ -126,7 +126,9 @@ Route::middleware('supabase.auth')->group(function () {
     // Admin — user management (admin role required)
     Route::middleware('admin')->prefix('admin')->group(function () {
         Route::get('users', [AdminUserController::class, 'index']);
+        Route::post('users', [AdminUserController::class, 'store']);
         Route::patch('users/{user}', [AdminUserController::class, 'update']);
+        Route::delete('users/{user}', [AdminUserController::class, 'destroy']);
     });
 
     // Roadmap (items + releases, multi-views)
