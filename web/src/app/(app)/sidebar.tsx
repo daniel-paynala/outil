@@ -12,6 +12,7 @@ import {
   CalendarClock,
   Bell,
   LogOut,
+  Shield,
   type LucideIcon,
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
@@ -34,10 +35,19 @@ const NAV: NavItem[] = [
   { href: "/notifications", label: "Notifications", icon: Bell, disabled: true },
 ];
 
-export default function Sidebar({ email }: { email: string }) {
+export default function Sidebar({
+  email,
+  isAdmin = false,
+}: {
+  email: string;
+  isAdmin?: boolean;
+}) {
   const pathname = usePathname();
   const router = useRouter();
   const supabase = createClient();
+  const nav: NavItem[] = isAdmin
+    ? [...NAV, { href: "/admin/users", label: "Admin", icon: Shield }]
+    : NAV;
 
   async function handleLogout() {
     await supabase.auth.signOut();
@@ -61,8 +71,8 @@ export default function Sidebar({ email }: { email: string }) {
         </div>
       </div>
 
-      <nav className="flex-1 overflow-y-auto px-2 py-3 space-y-0.5">
-        {NAV.map(({ href, label, icon: Icon, disabled }) => {
+      <nav className="flex-1 px-2 py-3 space-y-0.5">
+        {nav.map(({ href, label, icon: Icon, disabled }) => {
           const active = pathname === href || pathname.startsWith(href + "/");
           if (disabled) {
             return (

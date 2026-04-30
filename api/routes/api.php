@@ -2,6 +2,7 @@
 
 use App\Modules\Activity\Http\Controllers\ActivityController;
 use App\Modules\Adr\Http\Controllers\DecisionController;
+use App\Modules\Core\Http\Controllers\AdminUserController;
 use App\Modules\Core\Http\Controllers\ProjectController;
 use App\Modules\Docs\Http\Controllers\DocController;
 use App\Modules\Files\Http\Controllers\ProjectFileController;
@@ -121,6 +122,12 @@ Route::middleware('supabase.auth')->group(function () {
     Route::delete('github/repos/{repo}', [GithubController::class, 'destroy']);
     Route::post('github/repos/{repo}/sync', [GithubController::class, 'sync']);
     Route::get('projects/{project}/github/commits', [GithubController::class, 'commits']);
+
+    // Admin — user management (admin role required)
+    Route::middleware('admin')->prefix('admin')->group(function () {
+        Route::get('users', [AdminUserController::class, 'index']);
+        Route::patch('users/{user}', [AdminUserController::class, 'update']);
+    });
 
     // Roadmap (items + releases, multi-views)
     Route::get('projects/{project}/roadmap', [RoadmapController::class, 'index']);
