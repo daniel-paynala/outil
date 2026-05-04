@@ -42,8 +42,12 @@ class SupabaseAdminClient
 
         $json = $res->json();
 
+        // Supabase GoTrue retourne l'utilisateur à plat au top-level (id, email, …)
+        // + action_link. Pas de wrapper "user".
+        $userId = $json['id'] ?? $json['user']['id'] ?? null;
+
         return [
-            'user_id' => $json['user']['id'] ?? throw new RuntimeException('Missing user.id in Supabase response'),
+            'user_id' => $userId ?? throw new RuntimeException('Missing user id in Supabase response'),
             'action_link' => $json['action_link'] ?? throw new RuntimeException('Missing action_link in Supabase response'),
         ];
     }
