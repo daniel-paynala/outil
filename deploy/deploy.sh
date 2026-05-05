@@ -31,9 +31,9 @@ php artisan route:cache
 php artisan view:cache
 php artisan event:cache
 
-# Permissions storage
-chmod -R 775 storage bootstrap/cache
+# Permissions storage (les logs sont créés par www-data → besoin de sudo)
 sudo chown -R www-data:www-data storage bootstrap/cache 2>/dev/null || true
+sudo chmod -R 775 storage bootstrap/cache 2>/dev/null || true
 
 # Reload PHP-FPM (charge nouveau code OPcache)
 PHP_VER="$(cat /etc/arche-php-version 2>/dev/null || echo 8.5)"
