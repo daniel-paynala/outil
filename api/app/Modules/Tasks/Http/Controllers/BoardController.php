@@ -88,9 +88,24 @@ class BoardController extends Controller
         $data = $request->validate([
             'name' => ['sometimes', 'string', 'max:80'],
             'color' => ['nullable', 'string', 'regex:/^#[0-9a-fA-F]{6}$/'],
+            'is_done' => ['sometimes', 'boolean'],
         ]);
 
+        $previousIsDone = (bool) $column->is_done;
+
         $column->update($data);
+
+        if (array_key_exists('is_done', $data) && $previousIsDone !== (bool) $data['is_done']) {
+            if ($data['is_done']) {
+                Card::where('column_id', $column->id)
+                    ->whereNull('completed_at')
+                    ->update(['completed_at' => now()]);
+            } else {
+                Card::where('column_id', $column->id)
+                    ->whereNotNull('completed_at')
+                    ->update(['completed_at' => null]);
+            }
+        }
 
         return response()->json($column);
     }
@@ -257,10 +272,17 @@ class BoardController extends Controller
                     $c->update(['position' => $i]);
                 }
             } else {
-                $card->update([
+                // Sync completed_at en fonction du is_done de la colonne destination.
+                $patch = [
                     'column_id' => $toColumnId,
                     'position' => $toPos,
-                ]);
+                ];
+                if ($toColumn->is_done && ! $card->completed_at) {
+                    $patch['completed_at'] = now();
+                } elseif (! $toColumn->is_done && $card->completed_at) {
+                    $patch['completed_at'] = null;
+                }
+                $card->update($patch);
 
                 $sourceCards = Card::where('column_id', $fromColumnId)
                     ->orderBy('position')
@@ -325,15 +347,16 @@ class BoardController extends Controller
     private function seedDefaultColumns(string $projectId): void
     {
         $defaults = [
-            ['name' => 'À faire', 'position' => 0],
-            ['name' => 'En cours', 'position' => 1],
-            ['name' => 'Terminé', 'position' => 2],
+            ['name' => 'À faire', 'position' => 0, 'is_done' => false],
+            ['name' => 'En cours', 'position' => 1, 'is_done' => false],
+            ['name' => 'Terminé', 'position' => 2, 'is_done' => true],
         ];
         foreach ($defaults as $c) {
             Column::create([
                 'project_id' => $projectId,
                 'name' => $c['name'],
                 'position' => $c['position'],
+                'is_done' => $c['is_done'],
             ]);
         }
     }

@@ -19,12 +19,14 @@ class Column extends Model
         'name',
         'position',
         'color',
+        'is_done',
     ];
 
     protected function casts(): array
     {
         return [
             'position' => 'integer',
+            'is_done' => 'boolean',
         ];
     }
 

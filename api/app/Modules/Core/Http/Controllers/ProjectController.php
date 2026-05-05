@@ -31,7 +31,7 @@ class ProjectController extends Controller
 
         $columnsByProject = Column::whereIn('project_id', $projectIds)
             ->orderBy('position')
-            ->get(['id', 'project_id', 'position'])
+            ->get(['id', 'project_id', 'position', 'is_done'])
             ->groupBy('project_id');
 
         $cardCountsByColumn = Card::whereIn('project_id', $projectIds)
@@ -45,17 +45,13 @@ class ProjectController extends Controller
             $cols = $columnsByProject->get($project->id);
             $stats = ['todo' => 0, 'doing' => 0, 'done' => 0];
             if ($cols && $cols->count() > 0) {
-                $colIds = $cols->pluck('id')->all();
-                $firstId = $colIds[0];
-                $lastId = end($colIds);
-                foreach ($colIds as $cid) {
-                    $count = (int) ($cardCountsByColumn[$cid] ?? 0);
+                $firstNonDoneId = $cols->firstWhere('is_done', false)?->id;
+                foreach ($cols as $col) {
+                    $count = (int) ($cardCountsByColumn[$col->id] ?? 0);
                     if ($count === 0) continue;
-                    if ($cid === $firstId && count($colIds) > 1) {
-                        $stats['todo'] += $count;
-                    } elseif ($cid === $lastId && count($colIds) > 1) {
+                    if ($col->is_done) {
                         $stats['done'] += $count;
-                    } elseif (count($colIds) === 1) {
+                    } elseif ($col->id === $firstNonDoneId) {
                         $stats['todo'] += $count;
                     } else {
                         $stats['doing'] += $count;
@@ -94,15 +90,16 @@ class ProjectController extends Controller
             ]);
 
             $defaults = [
-                ['name' => 'À faire', 'position' => 0],
-                ['name' => 'En cours', 'position' => 1],
-                ['name' => 'Terminé', 'position' => 2],
+                ['name' => 'À faire', 'position' => 0, 'is_done' => false],
+                ['name' => 'En cours', 'position' => 1, 'is_done' => false],
+                ['name' => 'Terminé', 'position' => 2, 'is_done' => true],
             ];
             foreach ($defaults as $c) {
                 Column::create([
                     'project_id' => $project->id,
                     'name' => $c['name'],
                     'position' => $c['position'],
+                    'is_done' => $c['is_done'],
                 ]);
             }
 

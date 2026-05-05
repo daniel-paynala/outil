@@ -42,6 +42,7 @@ export default function BoardCard({
   }
 
   const dueState = dueDateState(card.due_date);
+  const done = !!card.completed_at;
 
   return (
     <div
@@ -53,6 +54,7 @@ export default function BoardCard({
       className={clsx(
         "group rounded-md bg-[var(--background)] border border-[var(--border)] px-3 py-2.5 shadow-sm cursor-grab active:cursor-grabbing select-none",
         overlay && "shadow-lg border-[var(--color-neutral-400)] rotate-1",
+        done && "opacity-60",
       )}
     >
       {card.labels && card.labels.length > 0 && (
@@ -72,7 +74,9 @@ export default function BoardCard({
 
       <div className="flex items-start gap-2">
         <div className="flex-1 min-w-0">
-          <p className="text-sm leading-snug">{card.title}</p>
+          <p className={clsx("text-sm leading-snug", done && "line-through")}>
+            {card.title}
+          </p>
 
           <div className="flex items-center gap-2 mt-2 flex-wrap">
             {card.priority && (

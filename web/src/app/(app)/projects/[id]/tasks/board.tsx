@@ -222,6 +222,10 @@ export default function Board({
     setColumns((prev) => prev.filter((c) => c.id !== columnId));
   }
 
+  function onColumnUpdated(updated: BoardColumn) {
+    setColumns((prev) => prev.map((c) => (c.id === updated.id ? updated : c)));
+  }
+
   function onCardUpdated(updated: CardSummary) {
     setColumns((prev) =>
       prev.map((col) => ({
@@ -275,6 +279,7 @@ export default function Board({
               onAddCard={(card) => onAddCard(col.id, card)}
               onDeleteCard={onDeleteCard}
               onDeleteColumn={() => onDeleteColumn(col.id)}
+              onColumnUpdated={onColumnUpdated}
               onOpenCard={setOpenCardId}
             />
           </SortableContext>
@@ -364,12 +369,17 @@ function moveCardToColumn(
     }
     return col;
   });
-  if (!moving) return columns;
+  const movingCard = moving as CardSummary | null;
+  if (!movingCard) return columns;
+  const target = removed.find((c) => c.id === toColumnId);
+  const completed_at = target?.is_done
+    ? (movingCard.completed_at ?? new Date().toISOString())
+    : null;
   return removed.map((col) => {
     if (col.id !== toColumnId) return col;
     const next = [...col.cards];
     const idx = Math.min(toIndex, next.length);
-    next.splice(idx, 0, { ...moving!, column_id: toColumnId });
+    next.splice(idx, 0, { ...movingCard, column_id: toColumnId, completed_at });
     return { ...col, cards: next };
   });
 }

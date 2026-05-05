@@ -1,7 +1,7 @@
 export type ProjectUserStats = {
-  todo: number; // tâches assignées dans la 1ère colonne
-  doing: number; // tâches assignées dans les colonnes intermédiaires
-  done: number; // tâches assignées dans la dernière colonne
+  todo: number; // tâches assignées dans la première colonne non-done
+  doing: number; // tâches assignées dans les colonnes intermédiaires non-done
+  done: number; // tâches assignées dans une colonne is_done
 };
 
 export type Project = {
@@ -41,6 +41,7 @@ export type CardSummary = {
   position: number;
   priority: "low" | "medium" | "high" | "urgent" | null;
   due_date: string | null;
+  completed_at: string | null;
   estimate: string | null;
   assigned_to: string | null;
   created_by: string;
@@ -91,6 +92,7 @@ export type BoardColumn = {
   name: string;
   position: number;
   color: string | null;
+  is_done: boolean;
   cards: CardSummary[];
   created_at: string;
   updated_at: string;
@@ -105,7 +107,7 @@ export type ProjectDetail = Project & {
 
 export type MyTask = CardSummary & {
   project: Pick<Project, "id" | "name" | "slug" | "color">;
-  column: { id: string; name: string; position: number };
+  column: { id: string; name: string; position: number; is_done: boolean };
   labels: Label[];
   dependencies_count: number;
   children_count: number;

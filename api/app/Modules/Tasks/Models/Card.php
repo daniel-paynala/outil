@@ -45,6 +45,7 @@ class Card extends Model
         'position',
         'priority',
         'due_date',
+        'completed_at',
         'estimate',
         'assigned_to',
         'created_by',
@@ -55,6 +56,7 @@ class Card extends Model
         return [
             'position' => 'integer',
             'due_date' => 'datetime',
+            'completed_at' => 'datetime',
         ];
     }
 

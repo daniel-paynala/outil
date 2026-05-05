@@ -1,6 +1,14 @@
 "use client";
 
-import { LayoutGrid, List, Link2, User, X, CalendarDays } from "lucide-react";
+import {
+  LayoutGrid,
+  List,
+  Link2,
+  User,
+  X,
+  CalendarDays,
+  CheckCircle2,
+} from "lucide-react";
 import { clsx } from "clsx";
 import type { Label, ProjectMember } from "@/lib/types";
 
@@ -10,6 +18,7 @@ export type BoardFilters = {
   priority: string | null;
   blockedOnly: boolean;
   mineOnly: boolean;
+  showDone: boolean;
 };
 
 export const EMPTY_FILTERS: BoardFilters = {
@@ -18,6 +27,7 @@ export const EMPTY_FILTERS: BoardFilters = {
   priority: null,
   blockedOnly: false,
   mineOnly: false,
+  showDone: true,
 };
 
 export type ViewMode = "board" | "list" | "calendar";
@@ -46,7 +56,8 @@ export default function FiltersBar({
     filters.labelId ||
     filters.priority ||
     filters.blockedOnly ||
-    filters.mineOnly;
+    filters.mineOnly ||
+    !filters.showDone;
 
   return (
     <div className="flex flex-wrap items-center gap-2 pb-4">
@@ -76,6 +87,24 @@ export default function FiltersBar({
       >
         <Link2 size={12} strokeWidth={2} />
         Bloquées
+      </button>
+
+      <button
+        onClick={() => setFilters({ ...filters, showDone: !filters.showDone })}
+        title={
+          filters.showDone
+            ? "Masquer les terminées"
+            : "Afficher les terminées"
+        }
+        className={clsx(
+          "inline-flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs font-medium border transition-colors",
+          !filters.showDone
+            ? "bg-[var(--color-neutral-200)] dark:bg-[var(--color-neutral-700)] border-[var(--color-neutral-400)]"
+            : "border-[var(--border)] hover:border-[var(--color-neutral-400)]",
+        )}
+      >
+        <CheckCircle2 size={12} strokeWidth={2} />
+        {filters.showDone ? "Terminées" : "Sans terminées"}
       </button>
 
       <select
@@ -185,6 +214,7 @@ export function applyFilters(
   return columns.map((col) => ({
     ...col,
     cards: col.cards.filter((c) => {
+      if (!filters.showDone && c.completed_at) return false;
       if (filters.mineOnly && c.assigned_to !== currentUserId) return false;
       if (filters.assigneeId && c.assigned_to !== filters.assigneeId)
         return false;

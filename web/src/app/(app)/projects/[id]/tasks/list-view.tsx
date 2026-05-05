@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { Calendar, Clock, Link2, GitBranch } from "lucide-react";
+import { Calendar, Clock, Link2, GitBranch, ChevronRight } from "lucide-react";
 import { clsx } from "clsx";
 import type { BoardColumn, CardSummary } from "@/lib/types";
 
@@ -20,6 +20,8 @@ const PRIORITY_RANK: Record<string, number> = {
   low: 1,
 };
 
+type RowData = CardSummary & { columnName: string };
+
 export default function ListView({
   columns,
   onOpenCard,
@@ -29,9 +31,10 @@ export default function ListView({
 }) {
   const [sortKey, setSortKey] = useState<SortKey>("created_at");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
+  const [doneOpen, setDoneOpen] = useState(false);
 
   const flatCards = useMemo(() => {
-    const rows: Array<CardSummary & { columnName: string }> = [];
+    const rows: RowData[] = [];
     for (const col of columns) {
       for (const card of col.cards) {
         rows.push({ ...card, columnName: col.name });
@@ -52,6 +55,9 @@ export default function ListView({
     });
     return sortDir === "asc" ? arr : arr.reverse();
   }, [flatCards, sortKey, sortDir]);
+
+  const active = useMemo(() => sorted.filter((r) => !r.completed_at), [sorted]);
+  const done = useMemo(() => sorted.filter((r) => !!r.completed_at), [sorted]);
 
   function toggleSort(k: SortKey) {
     if (k === sortKey) {
@@ -77,112 +83,157 @@ export default function ListView({
           </tr>
         </thead>
         <tbody>
-          {sorted.length === 0 && (
+          {active.length === 0 && (
             <tr>
               <td colSpan={7} className="text-center text-[var(--muted)] py-10 text-xs">
-                Aucune carte.
+                Aucune carte active.
               </td>
             </tr>
           )}
-          {sorted.map((c) => (
-            <tr
-              key={c.id}
-              onClick={() => onOpenCard(c.id)}
-              className="border-b last:border-b-0 border-[var(--border)] hover:bg-[var(--color-neutral-100)] dark:hover:bg-[var(--color-neutral-800)]/50 cursor-pointer"
-            >
-              <td className="px-3 py-2.5 max-w-[320px]">
-                <p className="truncate">{c.title}</p>
-              </td>
-              <td className="px-3 py-2.5 text-xs text-[var(--muted)]">
-                {c.columnName}
-              </td>
-              <td className="px-3 py-2.5">
-                {c.assignee ? (
-                  <span className="inline-flex items-center gap-1.5 text-xs">
-                    <span className="size-5 rounded-full bg-[var(--color-neutral-300)] dark:bg-[var(--color-neutral-600)] flex items-center justify-center text-[10px] font-medium">
-                      {c.assignee.email.charAt(0).toUpperCase()}
-                    </span>
-                    <span className="truncate max-w-[140px]">{c.assignee.email}</span>
-                  </span>
-                ) : (
-                  <span className="text-xs text-[var(--muted)]">—</span>
-                )}
-              </td>
-              <td className="px-3 py-2.5">
-                {c.due_date ? (
-                  <span className="inline-flex items-center gap-1 text-xs">
-                    <Calendar size={11} />
-                    {c.due_date.slice(0, 10)}
-                  </span>
-                ) : (
-                  <span className="text-xs text-[var(--muted)]">—</span>
-                )}
-              </td>
-              <td className="px-3 py-2.5">
-                {c.priority ? (
-                  <span
-                    className={clsx(
-                      "inline-block text-[10px] uppercase tracking-wider rounded px-1.5 py-0.5",
-                      c.priority === "urgent" &&
-                        "bg-[var(--color-brand-red)]/10 text-[var(--color-brand-red)]",
-                      c.priority === "high" &&
-                        "bg-[var(--color-warning)]/10 text-[var(--color-warning)]",
-                      c.priority === "medium" &&
-                        "bg-[var(--color-info)]/10 text-[var(--color-info)]",
-                      c.priority === "low" &&
-                        "bg-[var(--color-neutral-200)] dark:bg-[var(--color-neutral-700)] text-[var(--muted)]",
-                    )}
-                  >
-                    {c.priority}
-                  </span>
-                ) : (
-                  <span className="text-xs text-[var(--muted)]">—</span>
-                )}
-              </td>
-              <td className="px-3 py-2.5">
-                {c.labels && c.labels.length > 0 ? (
-                  <div className="flex flex-wrap gap-1">
-                    {c.labels.map((l) => (
-                      <span
-                        key={l.id}
-                        className="text-[10px] uppercase tracking-wider rounded px-1.5 py-0.5 text-white"
-                        style={{ background: l.color }}
-                      >
-                        {l.name}
-                      </span>
-                    ))}
-                  </div>
-                ) : (
-                  <span className="text-xs text-[var(--muted)]">—</span>
-                )}
-              </td>
-              <td className="px-3 py-2.5">
-                <div className="flex items-center gap-2 text-xs text-[var(--muted)]">
-                  {c.estimate && (
-                    <span className="inline-flex items-center gap-1">
-                      <Clock size={11} />
-                      {c.estimate}
-                    </span>
-                  )}
-                  {(c.dependencies_count ?? 0) > 0 && (
-                    <span className="inline-flex items-center gap-1 text-[var(--color-warning)]">
-                      <Link2 size={11} />
-                      {c.dependencies_count}
-                    </span>
-                  )}
-                  {(c.children_count ?? 0) > 0 && (
-                    <span className="inline-flex items-center gap-1">
-                      <GitBranch size={11} />
-                      {c.children_count}
-                    </span>
-                  )}
-                </div>
-              </td>
-            </tr>
+          {active.map((c) => (
+            <Row key={c.id} c={c} onOpen={onOpenCard} />
           ))}
         </tbody>
+
+        {done.length > 0 && (
+          <tbody className="border-t border-[var(--border)]">
+            <tr>
+              <td colSpan={7} className="p-0">
+                <button
+                  onClick={() => setDoneOpen((v) => !v)}
+                  className="flex items-center gap-2 w-full px-3 py-2.5 text-left text-sm hover:bg-[var(--color-neutral-100)] dark:hover:bg-[var(--color-neutral-800)]/50"
+                >
+                  <ChevronRight
+                    size={14}
+                    className={clsx(
+                      "transition-transform text-[var(--muted)]",
+                      doneOpen && "rotate-90",
+                    )}
+                  />
+                  <span className="font-medium">Terminées</span>
+                  <span className="text-[11px] text-[var(--muted)] bg-[var(--color-neutral-200)] dark:bg-[var(--color-neutral-700)] rounded-full px-1.5 py-0.5">
+                    {done.length}
+                  </span>
+                </button>
+              </td>
+            </tr>
+            {doneOpen &&
+              done.map((c) => (
+                <Row key={c.id} c={c} onOpen={onOpenCard} muted />
+              ))}
+          </tbody>
+        )}
       </table>
     </div>
+  );
+}
+
+function Row({
+  c,
+  onOpen,
+  muted = false,
+}: {
+  c: RowData;
+  onOpen: (id: string) => void;
+  muted?: boolean;
+}) {
+  return (
+    <tr
+      onClick={() => onOpen(c.id)}
+      className={clsx(
+        "border-b last:border-b-0 border-[var(--border)] hover:bg-[var(--color-neutral-100)] dark:hover:bg-[var(--color-neutral-800)]/50 cursor-pointer",
+        muted && "opacity-60",
+      )}
+    >
+      <td className="px-3 py-2.5 max-w-[320px]">
+        <p className={clsx("truncate", muted && "line-through")}>{c.title}</p>
+      </td>
+      <td className="px-3 py-2.5 text-xs text-[var(--muted)]">
+        {c.columnName}
+      </td>
+      <td className="px-3 py-2.5">
+        {c.assignee ? (
+          <span className="inline-flex items-center gap-1.5 text-xs">
+            <span className="size-5 rounded-full bg-[var(--color-neutral-300)] dark:bg-[var(--color-neutral-600)] flex items-center justify-center text-[10px] font-medium">
+              {c.assignee.email.charAt(0).toUpperCase()}
+            </span>
+            <span className="truncate max-w-[140px]">{c.assignee.email}</span>
+          </span>
+        ) : (
+          <span className="text-xs text-[var(--muted)]">—</span>
+        )}
+      </td>
+      <td className="px-3 py-2.5">
+        {c.due_date ? (
+          <span className="inline-flex items-center gap-1 text-xs">
+            <Calendar size={11} />
+            {c.due_date.slice(0, 10)}
+          </span>
+        ) : (
+          <span className="text-xs text-[var(--muted)]">—</span>
+        )}
+      </td>
+      <td className="px-3 py-2.5">
+        {c.priority ? (
+          <span
+            className={clsx(
+              "inline-block text-[10px] uppercase tracking-wider rounded px-1.5 py-0.5",
+              c.priority === "urgent" &&
+                "bg-[var(--color-brand-red)]/10 text-[var(--color-brand-red)]",
+              c.priority === "high" &&
+                "bg-[var(--color-warning)]/10 text-[var(--color-warning)]",
+              c.priority === "medium" &&
+                "bg-[var(--color-info)]/10 text-[var(--color-info)]",
+              c.priority === "low" &&
+                "bg-[var(--color-neutral-200)] dark:bg-[var(--color-neutral-700)] text-[var(--muted)]",
+            )}
+          >
+            {c.priority}
+          </span>
+        ) : (
+          <span className="text-xs text-[var(--muted)]">—</span>
+        )}
+      </td>
+      <td className="px-3 py-2.5">
+        {c.labels && c.labels.length > 0 ? (
+          <div className="flex flex-wrap gap-1">
+            {c.labels.map((l) => (
+              <span
+                key={l.id}
+                className="text-[10px] uppercase tracking-wider rounded px-1.5 py-0.5 text-white"
+                style={{ background: l.color }}
+              >
+                {l.name}
+              </span>
+            ))}
+          </div>
+        ) : (
+          <span className="text-xs text-[var(--muted)]">—</span>
+        )}
+      </td>
+      <td className="px-3 py-2.5">
+        <div className="flex items-center gap-2 text-xs text-[var(--muted)]">
+          {c.estimate && (
+            <span className="inline-flex items-center gap-1">
+              <Clock size={11} />
+              {c.estimate}
+            </span>
+          )}
+          {(c.dependencies_count ?? 0) > 0 && (
+            <span className="inline-flex items-center gap-1 text-[var(--color-warning)]">
+              <Link2 size={11} />
+              {c.dependencies_count}
+            </span>
+          )}
+          {(c.children_count ?? 0) > 0 && (
+            <span className="inline-flex items-center gap-1">
+              <GitBranch size={11} />
+              {c.children_count}
+            </span>
+          )}
+        </div>
+      </td>
+    </tr>
   );
 }
 

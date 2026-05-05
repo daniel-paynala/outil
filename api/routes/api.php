@@ -38,6 +38,7 @@ Route::middleware('supabase.auth')->group(function () {
     Route::apiResource('projects', ProjectController::class);
 
     Route::get('me/tasks', [MyTasksController::class, 'index']);
+    Route::get('me/archive', [MyTasksController::class, 'archive']);
     Route::get('search', [SearchController::class, 'index']);
 
     // Tasks / Board
