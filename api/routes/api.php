@@ -4,9 +4,12 @@ use App\Modules\Activity\Http\Controllers\ActivityController;
 use App\Modules\Adr\Http\Controllers\DecisionController;
 use App\Modules\Core\Http\Controllers\AdminUserController;
 use App\Modules\Core\Http\Controllers\ProjectController;
+use App\Modules\Core\Http\Controllers\UserDirectoryController;
 use App\Modules\Docs\Http\Controllers\DocController;
 use App\Modules\Files\Http\Controllers\ProjectFileController;
 use App\Modules\Github\Http\Controllers\GithubController;
+use App\Modules\Messagerie\Http\Controllers\ConversationController;
+use App\Modules\Messagerie\Http\Controllers\MessageController;
 use App\Modules\Roadmap\Http\Controllers\RoadmapController;
 use App\Modules\Search\Http\Controllers\SearchController;
 use App\Modules\Tasks\Http\Controllers\BoardController;
@@ -36,6 +39,10 @@ Route::middleware('supabase.auth')->group(function () {
     });
 
     Route::apiResource('projects', ProjectController::class);
+
+    // Annuaire de l'équipe — nécessaire pour désigner quelqu'un (discussion,
+    // assignation). En lecture seule ; la gestion des comptes reste sous /admin.
+    Route::get('users', [UserDirectoryController::class, 'index']);
 
     Route::get('me/tasks', [MyTasksController::class, 'index']);
     Route::get('me/archive', [MyTasksController::class, 'archive']);
@@ -131,6 +138,21 @@ Route::middleware('supabase.auth')->group(function () {
         Route::patch('users/{user}', [AdminUserController::class, 'update']);
         Route::delete('users/{user}', [AdminUserController::class, 'destroy']);
     });
+
+    // Messagerie interne — conversations et messages.
+    // Aucune notion de projet obligatoire : une conversation peut être
+    // transverse. L'appartenance à la conversation est la seule autorisation.
+    Route::get('conversations', [ConversationController::class, 'index']);
+    Route::post('conversations', [ConversationController::class, 'store']);
+    Route::get('conversations/{conversation}', [ConversationController::class, 'show']);
+    Route::patch('conversations/{conversation}', [ConversationController::class, 'update']);
+    Route::post('conversations/{conversation}/read', [ConversationController::class, 'markRead']);
+    Route::post('conversations/{conversation}/members', [ConversationController::class, 'addMembers']);
+    Route::delete('conversations/{conversation}/members/{userId}', [ConversationController::class, 'removeMember']);
+
+    Route::get('conversations/{conversation}/messages', [MessageController::class, 'index']);
+    Route::post('conversations/{conversation}/messages', [MessageController::class, 'store']);
+    Route::delete('messages/{message}', [MessageController::class, 'destroy']);
 
     // Roadmap (items + releases, multi-views)
     Route::get('projects/{project}/roadmap', [RoadmapController::class, 'index']);
