@@ -105,7 +105,7 @@ class ConversationController extends Controller
             ->selectRaw('distinct on (conversation_id) *')
             ->whereIn('conversation_id', $conversationIds)
             ->orderByRaw('conversation_id, created_at desc, id desc')
-            ->with('author:id,email,name')
+            ->with(['author:id,email,name', 'attachments'])
             ->get()
             ->keyBy('conversation_id')
             ->all();

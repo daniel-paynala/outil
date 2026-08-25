@@ -152,7 +152,10 @@ Route::middleware('supabase.auth')->group(function () {
 
     Route::get('conversations/{conversation}/messages', [MessageController::class, 'index']);
     Route::post('conversations/{conversation}/messages', [MessageController::class, 'store']);
+    Route::patch('messages/{message}', [MessageController::class, 'update']);
     Route::delete('messages/{message}', [MessageController::class, 'destroy']);
+    // Bucket privé : l'URL est signée à la demande, jamais stockée.
+    Route::get('message-attachments/{attachment}/url', [MessageController::class, 'attachmentUrl']);
 
     // Roadmap (items + releases, multi-views)
     Route::get('projects/{project}/roadmap', [RoadmapController::class, 'index']);
