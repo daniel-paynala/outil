@@ -14,6 +14,7 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Log;
+use Symfony\Component\HttpKernel\Exception\HttpExceptionInterface;
 use Throwable;
 
 class SearchController extends Controller
@@ -28,12 +29,40 @@ class SearchController extends Controller
         $userId = $request->attributes->get('supabase_user_id')
             ?? abort(401, 'Missing user id');
 
+        try {
+            return response()->json($this->results($q, $userId));
+        } catch (HttpExceptionInterface $e) {
+            // 401 / 403 : refus délibéré, il doit remonter tel quel.
+            throw $e;
+        } catch (Throwable $e) {
+            // Garde-fou externe. `safe()` ne protège que les appels au moteur ;
+            // tout ce qui est autour (requêtes SQL préalables, sérialisation,
+            // et surtout l'écriture du log dans le catch lui-même) pouvait
+            // encore renvoyer un 500. Or la recherche est un confort : quand
+            // elle casse, le client doit recevoir une réponse exploitable qui
+            // dit pourquoi, pas une erreur serveur opaque.
+            $this->report($e);
+
+            return response()->json([
+                ...$this->empty(),
+                'warning' => 'Recherche indisponible : '.$e->getMessage(),
+            ]);
+        }
+    }
+
+    /**
+     * Exécute la recherche sur les projets de l'utilisateur.
+     *
+     * @return array<string, mixed>
+     */
+    private function results(string $q, string $userId): array
+    {
         $projectIds = ProjectMember::where('user_id', $userId)
             ->pluck('project_id')
             ->all();
 
         if (empty($projectIds)) {
-            return response()->json($this->empty());
+            return $this->empty();
         }
 
         // Lookup table project_id => project summary
@@ -43,7 +72,7 @@ class SearchController extends Controller
 
         $warning = null;
 
-        return response()->json([
+        return [
             'cards' => $this->safe(
                 fn () => $this->mapCards(
                     Card::search($q)->whereIn('project_id', $projectIds)->take(10)->get(),
@@ -80,21 +109,45 @@ class SearchController extends Controller
                 $warning,
             ),
             'warning' => $warning,
-        ]);
+        ];
     }
 
+    /**
+     * @param  array<string, mixed>|callable  $fn
+     * @return array<int, mixed>
+     */
     private function safe(callable $fn, ?string &$warning): array
     {
         try {
             return $fn();
         } catch (Throwable $e) {
-            Log::warning('Search engine call failed: '.$e->getMessage());
+            $this->report($e);
             if ($warning === null) {
                 $warning = str_contains($e->getMessage(), 'Failed to connect')
-                    ? 'Moteur de recherche indisponible. Démarre Meilisearch : docker compose up -d'
+                    ? 'Moteur de recherche indisponible sur le serveur.'
                     : 'Erreur moteur de recherche : '.$e->getMessage();
             }
+
             return [];
+        }
+    }
+
+    /**
+     * Journalise sans jamais lever.
+     *
+     * `Log::warning()` écrit dans storage/logs : si le dossier n'appartient pas
+     * à www-data — panne déjà rencontrée sur ce déploiement — l'appel lance à
+     * son tour, depuis l'intérieur d'un bloc catch. L'exception échappait alors
+     * au filet et l'endpoint renvoyait 500 au lieu de dégrader proprement.
+     */
+    private function report(Throwable $e): void
+    {
+        try {
+            Log::warning('Search failed: '.$e->getMessage(), [
+                'exception' => $e::class,
+            ]);
+        } catch (Throwable) {
+            // On ne casse pas une requête parce qu'un log n'a pas pu s'écrire.
         }
     }
 
