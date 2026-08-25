@@ -4,6 +4,7 @@ import { useState } from "react";
 import { Plus, Package, Loader2, Pencil, Trash2, X } from "lucide-react";
 import type { Release, RoadmapItem } from "@/lib/types";
 import { apiFetch } from "@/lib/api/client";
+import { useToast } from "@/core/toast/toast-context";
 import ItemCard from "./item-card";
 
 export default function ViewReleases({
@@ -189,6 +190,7 @@ function ReleaseForm({
   onSaved: (r: Release) => void;
   onDeleted?: () => void;
 }) {
+  const toast = useToast();
   const [name, setName] = useState(release?.name ?? "");
   const [description, setDescription] = useState(release?.description ?? "");
   const [shippedAt, setShippedAt] = useState(
@@ -218,22 +220,56 @@ function ReleaseForm({
     const url = release
       ? `/api/releases/${release.id}`
       : `/api/projects/${projectId}/releases`;
-    const res = await apiFetch(url, {
-      method: release ? "PATCH" : "POST",
-      body: JSON.stringify(body),
-    });
-    setLoading(false);
-    if (!res.ok) return;
-    onSaved((await res.json()) as Release);
+    try {
+      const res = await apiFetch(url, {
+        method: release ? "PATCH" : "POST",
+        body: JSON.stringify(body),
+      });
+      setLoading(false);
+      if (!res.ok) {
+        toast.error(
+          release ? "Mise à jour impossible" : "Création impossible",
+          (await res.text()) || `Erreur ${res.status}`,
+        );
+        return;
+      }
+      const saved = (await res.json()) as Release;
+      toast.success(
+        release ? "Enregistrée" : "Créée",
+        `Release « ${saved.name} »`,
+      );
+      onSaved(saved);
+    } catch (err) {
+      setLoading(false);
+      toast.error(
+        release ? "Mise à jour impossible" : "Création impossible",
+        err instanceof Error ? err.message : String(err),
+      );
+    }
   }
 
   async function handleDelete() {
     if (!release) return;
     if (!confirm(`Supprimer la release "${release.name}" ?`)) return;
-    const res = await apiFetch(`/api/releases/${release.id}`, {
-      method: "DELETE",
-    });
-    if (res.ok && onDeleted) onDeleted();
+    try {
+      const res = await apiFetch(`/api/releases/${release.id}`, {
+        method: "DELETE",
+      });
+      if (res.ok) {
+        toast.success("Supprimée", `Release « ${release.name} »`);
+        if (onDeleted) onDeleted();
+      } else {
+        toast.error(
+          "Suppression impossible",
+          (await res.text()) || `Erreur ${res.status}`,
+        );
+      }
+    } catch (err) {
+      toast.error(
+        "Suppression impossible",
+        err instanceof Error ? err.message : String(err),
+      );
+    }
   }
 
   return (

@@ -24,6 +24,7 @@ import type {
   ProjectMember,
 } from "@/lib/types";
 import { apiFetch } from "@/lib/api/client";
+import { useToast } from "@/core/toast/toast-context";
 import BoardCard from "./card";
 import BoardColumnView from "./column";
 import NewColumnButton from "./new-column-button";
@@ -53,6 +54,7 @@ export default function Board({
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
+  const toast = useToast();
 
   const [columns, setColumns] = useState<BoardColumn[]>(initialColumns);
   const [labels, setLabels] = useState<Label[]>(initialLabels);
@@ -183,17 +185,26 @@ export default function Board({
       }
     }
 
-    const res = await apiFetch(`/api/projects/${projectId}/board/move`, {
-      method: "POST",
-      body: JSON.stringify({
-        card_id: activeId,
-        to_column_id: targetColumnId,
-        to_position: targetPosition,
-      }),
-    });
-    if (!res.ok) {
-      const fresh = await apiFetch(`/api/projects/${projectId}/columns`);
-      if (fresh.ok) setColumns(await fresh.json());
+    try {
+      const res = await apiFetch(`/api/projects/${projectId}/board/move`, {
+        method: "POST",
+        body: JSON.stringify({
+          card_id: activeId,
+          to_column_id: targetColumnId,
+          to_position: targetPosition,
+        }),
+      });
+      if (!res.ok) {
+        const msg = await res.text();
+        toast.error("Déplacement impossible", msg || `Erreur ${res.status}`);
+        const fresh = await apiFetch(`/api/projects/${projectId}/columns`);
+        if (fresh.ok) setColumns(await fresh.json());
+      }
+    } catch (err) {
+      toast.error(
+        "Déplacement impossible",
+        err instanceof Error ? err.message : String(err),
+      );
     }
   }
 

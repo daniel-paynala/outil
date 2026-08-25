@@ -13,6 +13,7 @@ import {
 import { clsx } from "clsx";
 import type { DocPageSummary } from "@/lib/types";
 import { apiFetch } from "@/lib/api/client";
+import { useToast } from "@/core/toast/toast-context";
 
 export default function DocTree({
   projectId,
@@ -27,6 +28,7 @@ export default function DocTree({
   const [title, setTitle] = useState("");
   const [loading, setLoading] = useState(false);
   const router = useRouter();
+  const toast = useToast();
 
   const byParent = useMemo(() => {
     const map = new Map<string | null, DocPageSummary[]>();
@@ -51,21 +53,36 @@ export default function DocTree({
   async function createPage(parentId: string | null) {
     if (!title.trim()) return;
     setLoading(true);
-    const res = await apiFetch(`/api/projects/${projectId}/docs`, {
-      method: "POST",
-      body: JSON.stringify({ title: title.trim(), parent_id: parentId }),
-    });
-    setLoading(false);
-    if (!res.ok) return;
-    const created = (await res.json()) as DocPageSummary;
-    setPages((prev) => [...prev, created]);
-    if (parentId) {
-      setExpanded((prev) => new Set(prev).add(parentId));
+    try {
+      const res = await apiFetch(`/api/projects/${projectId}/docs`, {
+        method: "POST",
+        body: JSON.stringify({ title: title.trim(), parent_id: parentId }),
+      });
+      setLoading(false);
+      if (!res.ok) {
+        toast.error(
+          "Création impossible",
+          (await res.text()) || `Erreur ${res.status}`,
+        );
+        return;
+      }
+      const created = (await res.json()) as DocPageSummary;
+      toast.success("Créée", `Page « ${created.title} »`);
+      setPages((prev) => [...prev, created]);
+      if (parentId) {
+        setExpanded((prev) => new Set(prev).add(parentId));
+      }
+      setTitle("");
+      setCreating(false);
+      router.push(`/projects/${projectId}/docs/${created.id}`);
+      router.refresh();
+    } catch (err) {
+      setLoading(false);
+      toast.error(
+        "Création impossible",
+        err instanceof Error ? err.message : String(err),
+      );
     }
-    setTitle("");
-    setCreating(false);
-    router.push(`/projects/${projectId}/docs/${created.id}`);
-    router.refresh();
   }
 
   const roots = byParent.get(null) ?? [];

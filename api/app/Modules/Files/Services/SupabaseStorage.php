@@ -8,6 +8,7 @@ use Illuminate\Support\Facades\Http;
 class SupabaseStorage
 {
     public const BUCKET = 'project-files';
+    public const AVATAR_BUCKET = 'avatars';
 
     private string $url;
 
@@ -19,12 +20,12 @@ class SupabaseStorage
         $this->key = (string) config('supabase.service_role_key');
     }
 
-    public function ensureBucket(string $bucket = self::BUCKET): void
+    public function ensureBucket(string $bucket = self::BUCKET, bool $public = false): void
     {
         $res = $this->client()->post("{$this->url}/storage/v1/bucket", [
             'id' => $bucket,
             'name' => $bucket,
-            'public' => false,
+            'public' => $public,
         ]);
 
         if ($res->successful()) {
@@ -45,9 +46,9 @@ class SupabaseStorage
         $res->throw();
     }
 
-    public function upload(string $path, string $contents, string $mime, string $bucket = self::BUCKET): void
+    public function upload(string $path, string $contents, string $mime, string $bucket = self::BUCKET, bool $public = false): void
     {
-        $this->ensureBucket($bucket);
+        $this->ensureBucket($bucket, $public);
 
         $this->client()
             ->withHeaders([
@@ -69,6 +70,14 @@ class SupabaseStorage
             ->json();
 
         return "{$this->url}/storage/v1{$json['signedURL']}";
+    }
+
+    /**
+     * URL publique pour un objet d'un bucket public (pas de signature).
+     */
+    public function publicUrl(string $path, string $bucket = self::AVATAR_BUCKET): string
+    {
+        return "{$this->url}/storage/v1/object/public/{$bucket}/{$path}";
     }
 
     public function delete(string $path, string $bucket = self::BUCKET): void

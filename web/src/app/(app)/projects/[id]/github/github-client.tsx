@@ -21,6 +21,8 @@ import type {
   GithubRepo,
 } from "@/lib/types";
 import { apiFetch } from "@/lib/api/client";
+import { useToast } from "@/core/toast/toast-context";
+import Avatar from "@/core/ui/avatar";
 
 const PLATFORMS: { key: GithubPlatform; label: string; icon: typeof Smartphone }[] = [
   { key: "mobile", label: "Mobile", icon: Smartphone },
@@ -38,6 +40,7 @@ export default function GithubClient({
   initialRepos: GithubRepo[];
   initialCommits: Commit[];
 }) {
+  const toast = useToast();
   const [repos, setRepos] = useState<GithubRepo[]>(initialRepos);
   const [commits, setCommits] = useState<Commit[]>(initialCommits);
   const [linking, setLinking] = useState(false);
@@ -53,32 +56,59 @@ export default function GithubClient({
     setRepos((prev) =>
       prev.map((r) => (r.id === repo.id ? { ...r, __syncing: true } as GithubRepo : r)),
     );
-    const res = await apiFetch(`/api/github/repos/${repo.id}/sync`, {
-      method: "POST",
-    });
-    setRepos((prev) =>
-      prev.map((r) => (r.id === repo.id ? { ...r, __syncing: false } as GithubRepo : r)),
-    );
-    if (res.ok) {
-      // Refresh the repo list to pick up last_synced_at
-      const listRes = await apiFetch(`/api/projects/${projectId}/github/repos`);
-      if (listRes.ok) setRepos((await listRes.json()) as GithubRepo[]);
-      await refreshCommits(filterRepoId ?? undefined);
-    } else {
-      const body = await res.json().catch(() => null);
-      alert(body?.detail ?? "Sync échoué");
+    try {
+      const res = await apiFetch(`/api/github/repos/${repo.id}/sync`, {
+        method: "POST",
+      });
+      setRepos((prev) =>
+        prev.map((r) => (r.id === repo.id ? { ...r, __syncing: false } as GithubRepo : r)),
+      );
+      if (res.ok) {
+        // Refresh the repo list to pick up last_synced_at
+        const listRes = await apiFetch(`/api/projects/${projectId}/github/repos`);
+        if (listRes.ok) setRepos((await listRes.json()) as GithubRepo[]);
+        await refreshCommits(filterRepoId ?? undefined);
+        toast.success("Synchronisé", repo.full_name);
+      } else {
+        const body = await res.json().catch(() => null);
+        toast.error(
+          "Synchronisation impossible",
+          body?.detail ?? body?.message ?? `Erreur ${res.status}`,
+        );
+      }
+    } catch (err) {
+      setRepos((prev) =>
+        prev.map((r) => (r.id === repo.id ? { ...r, __syncing: false } as GithubRepo : r)),
+      );
+      toast.error(
+        "Synchronisation impossible",
+        err instanceof Error ? err.message : String(err),
+      );
     }
   }
 
   async function unlinkRepo(repo: GithubRepo) {
     if (!confirm(`Délier ${repo.full_name} du projet ?`)) return;
-    const res = await apiFetch(`/api/github/repos/${repo.id}`, {
-      method: "DELETE",
-    });
-    if (res.ok) {
-      setRepos((prev) => prev.filter((r) => r.id !== repo.id));
-      setCommits((prev) => prev.filter((c) => c.github_repo_id !== repo.id));
-      if (filterRepoId === repo.id) setFilterRepoId(null);
+    try {
+      const res = await apiFetch(`/api/github/repos/${repo.id}`, {
+        method: "DELETE",
+      });
+      if (res.ok) {
+        setRepos((prev) => prev.filter((r) => r.id !== repo.id));
+        setCommits((prev) => prev.filter((c) => c.github_repo_id !== repo.id));
+        if (filterRepoId === repo.id) setFilterRepoId(null);
+        toast.success("Délié", repo.full_name);
+      } else {
+        toast.error(
+          "Déliaison impossible",
+          (await res.text()) || `Erreur ${res.status}`,
+        );
+      }
+    } catch (err) {
+      toast.error(
+        "Déliaison impossible",
+        err instanceof Error ? err.message : String(err),
+      );
     }
   }
 
@@ -171,20 +201,14 @@ export default function GithubClient({
           <ul className="rounded-lg border border-[var(--border)] bg-[var(--surface)] divide-y divide-[var(--border)]">
             {visibleCommits.map((c) => (
               <li key={c.id} className="px-4 py-3 flex items-start gap-3">
-                {c.author_avatar_url ? (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img
-                    src={c.author_avatar_url}
-                    alt=""
-                    width={28}
-                    height={28}
-                    className="rounded-full shrink-0"
-                  />
-                ) : (
-                  <span className="size-7 rounded-full bg-[var(--color-neutral-300)] dark:bg-[var(--color-neutral-600)] flex items-center justify-center text-[10px] font-medium shrink-0">
-                    {(c.author_name ?? "?").charAt(0).toUpperCase()}
-                  </span>
-                )}
+                <Avatar
+                  user={{
+                    name: c.author_name,
+                    email: c.author_email,
+                    avatar_url: c.author_avatar_url,
+                  }}
+                  size="md"
+                />
                 <div className="flex-1 min-w-0">
                   <p className="text-sm leading-snug line-clamp-2">
                     {firstLine(c.message)}
@@ -345,6 +369,7 @@ function LinkRepoDrawer({
   onClose: () => void;
   onCreated: (repo: GithubRepo) => void;
 }) {
+  const toast = useToast();
   const [fullName, setFullName] = useState("");
   const [platform, setPlatform] = useState<GithubPlatform>("web");
   const [token, setToken] = useState("");
@@ -356,22 +381,33 @@ function LinkRepoDrawer({
     e.preventDefault();
     setError(null);
     setLoading(true);
-    const res = await apiFetch(`/api/projects/${projectId}/github/repos`, {
-      method: "POST",
-      body: JSON.stringify({
-        full_name: fullName.trim(),
-        platform,
-        access_token: token.trim(),
-        description: description.trim() || null,
-      }),
-    });
-    setLoading(false);
-    if (!res.ok) {
-      const body = await res.json().catch(() => null);
-      setError(body?.message ?? body?.detail ?? `Erreur ${res.status}`);
-      return;
+    try {
+      const res = await apiFetch(`/api/projects/${projectId}/github/repos`, {
+        method: "POST",
+        body: JSON.stringify({
+          full_name: fullName.trim(),
+          platform,
+          access_token: token.trim(),
+          description: description.trim() || null,
+        }),
+      });
+      setLoading(false);
+      if (!res.ok) {
+        const body = await res.json().catch(() => null);
+        const msg = body?.message ?? body?.detail ?? `Erreur ${res.status}`;
+        setError(msg);
+        toast.error("Liaison impossible", msg);
+        return;
+      }
+      const repo = (await res.json()) as GithubRepo;
+      toast.success("Lié", repo.full_name);
+      onCreated(repo);
+    } catch (err) {
+      setLoading(false);
+      const msg = err instanceof Error ? err.message : String(err);
+      setError(msg);
+      toast.error("Liaison impossible", msg);
     }
-    onCreated((await res.json()) as GithubRepo);
   }
 
   return (

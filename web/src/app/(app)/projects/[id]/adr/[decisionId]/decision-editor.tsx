@@ -16,6 +16,7 @@ import {
 import { clsx } from "clsx";
 import type { Decision, DecisionStatus } from "@/lib/types";
 import { apiFetch } from "@/lib/api/client";
+import { useToast } from "@/core/toast/toast-context";
 import { StatusPill } from "../adr-list-client";
 
 const STATUS_OPTIONS: { value: DecisionStatus; label: string }[] = [
@@ -33,6 +34,7 @@ export default function DecisionEditor({
   decision: Decision;
 }) {
   const router = useRouter();
+  const toast = useToast();
   const [decision, setDecision] = useState<Decision>(initialDecision);
   const [editing, setEditing] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -57,24 +59,37 @@ export default function DecisionEditor({
 
   const save = useCallback(async () => {
     setSaving(true);
-    const res = await apiFetch(`/api/decisions/${decision.id}`, {
-      method: "PATCH",
-      body: JSON.stringify({
-        title,
-        status,
-        decided_at: decidedAt || null,
-        context: context || null,
-        decision: choice || null,
-        consequences: consequences || null,
-        alternatives: alternatives || null,
-        references: references || null,
-      }),
-    });
-    setSaving(false);
-    if (res.ok) {
-      const updated = (await res.json()) as Decision;
-      setDecision(updated);
-      setSavedAt(new Date());
+    try {
+      const res = await apiFetch(`/api/decisions/${decision.id}`, {
+        method: "PATCH",
+        body: JSON.stringify({
+          title,
+          status,
+          decided_at: decidedAt || null,
+          context: context || null,
+          decision: choice || null,
+          consequences: consequences || null,
+          alternatives: alternatives || null,
+          references: references || null,
+        }),
+      });
+      setSaving(false);
+      if (res.ok) {
+        const updated = (await res.json()) as Decision;
+        setDecision(updated);
+        setSavedAt(new Date());
+      } else {
+        toast.error(
+          "Enregistrement impossible",
+          (await res.text()) || `Erreur ${res.status}`,
+        );
+      }
+    } catch (err) {
+      setSaving(false);
+      toast.error(
+        "Enregistrement impossible",
+        err instanceof Error ? err.message : String(err),
+      );
     }
   }, [
     decision.id,
@@ -86,6 +101,7 @@ export default function DecisionEditor({
     consequences,
     alternatives,
     references,
+    toast,
   ]);
 
   useEffect(() => {
@@ -102,12 +118,28 @@ export default function DecisionEditor({
   async function handleDelete() {
     if (!confirm(`Supprimer ADR-${decision.number} « ${decision.title} » ?`))
       return;
-    const res = await apiFetch(`/api/decisions/${decision.id}`, {
-      method: "DELETE",
-    });
-    if (res.ok) {
-      router.push(`/projects/${projectId}/adr`);
-      router.refresh();
+    try {
+      const res = await apiFetch(`/api/decisions/${decision.id}`, {
+        method: "DELETE",
+      });
+      if (res.ok) {
+        toast.success(
+          "Supprimée",
+          `ADR-${String(decision.number).padStart(3, "0")} « ${decision.title} »`,
+        );
+        router.push(`/projects/${projectId}/adr`);
+        router.refresh();
+      } else {
+        toast.error(
+          "Suppression impossible",
+          (await res.text()) || `Erreur ${res.status}`,
+        );
+      }
+    } catch (err) {
+      toast.error(
+        "Suppression impossible",
+        err instanceof Error ? err.message : String(err),
+      );
     }
   }
 

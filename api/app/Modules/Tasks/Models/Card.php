@@ -55,7 +55,9 @@ class Card extends Model
     {
         return [
             'position' => 'integer',
-            'due_date' => 'datetime',
+            // due_date = date pure (jour), pas d'heure — évite le décalage timezone
+            // ("8 mai 00:00 Paris" → "7 mai 22:00 UTC" → affiché 7 mai)
+            'due_date' => 'date',
             'completed_at' => 'datetime',
         ];
     }

@@ -1,5 +1,5 @@
 import { apiJson } from "@/lib/api/server";
-import type { ProjectFile } from "@/lib/types";
+import type { ProjectFile, ProjectFolder } from "@/lib/types";
 import DocumentsClient from "./documents-client";
 
 export default async function DocumentsPage({
@@ -8,7 +8,18 @@ export default async function DocumentsPage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
-  const files = await apiJson<ProjectFile[]>(`/api/projects/${id}/files`);
+  const [files, folders] = await Promise.all([
+    apiJson<ProjectFile[]>(`/api/projects/${id}/files`),
+    apiJson<ProjectFolder[]>(`/api/projects/${id}/folders`).catch(
+      () => [] as ProjectFolder[],
+    ),
+  ]);
 
-  return <DocumentsClient projectId={id} initialFiles={files} />;
+  return (
+    <DocumentsClient
+      projectId={id}
+      initialFiles={files}
+      initialFolders={folders}
+    />
+  );
 }

@@ -13,6 +13,8 @@ import {
   ExternalLink,
   Pencil,
   ShieldCheck,
+  Globe2,
+  Lock,
 } from "lucide-react";
 import { clsx } from "clsx";
 import type {
@@ -21,21 +23,31 @@ import type {
   VaultEntry,
 } from "@/lib/types";
 import { apiFetch } from "@/lib/api/client";
+import { useToast } from "@/core/toast/toast-context";
+import Avatar from "@/core/ui/avatar";
 import { CATEGORIES, categoryMeta } from "./vault-client";
+import MembersPicker, { type PickableMember } from "./members-picker";
 
 const CLIPBOARD_CLEAR_SEC = 30;
 
 export default function EntryDrawer({
   entryId,
+  projectId,
+  currentUserId,
+  projectOwnerId,
   onClose,
   onUpdated,
   onDeleted,
 }: {
   entryId: string;
+  projectId: string;
+  currentUserId: string;
+  projectOwnerId: string;
   onClose: () => void;
   onUpdated: (e: VaultEntry) => void;
   onDeleted: () => void;
 }) {
+  const toast = useToast();
   const [entry, setEntry] = useState<VaultEntry | null>(null);
   const [revealed, setRevealed] = useState<string | null>(null);
   const [revealing, setRevealing] = useState(false);
@@ -43,6 +55,7 @@ export default function EntryDrawer({
   const [clipboardSecsLeft, setClipboardSecsLeft] = useState<number | null>(null);
   const [showLog, setShowLog] = useState(false);
   const [editing, setEditing] = useState(false);
+  const [members, setMembers] = useState<PickableMember[] | null>(null);
 
   const load = useCallback(async () => {
     const res = await apiFetch(`/api/vault/${entryId}`);
@@ -52,6 +65,22 @@ export default function EntryDrawer({
   useEffect(() => {
     load();
   }, [load]);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const res = await apiFetch(`/api/projects/${projectId}/members`);
+      if (!res.ok) {
+        if (!cancelled) setMembers([]);
+        return;
+      }
+      const list = (await res.json()) as PickableMember[];
+      if (!cancelled) setMembers(list);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [projectId]);
 
   useEffect(() => {
     function onEsc(e: KeyboardEvent) {
@@ -90,15 +119,29 @@ export default function EntryDrawer({
   }
 
   async function handleCopy() {
-    let val = revealed;
-    if (!val) {
-      const res = await apiFetch(`/api/vault/${entryId}/reveal`);
-      if (!res.ok) return;
-      val = ((await res.json()) as { secret: string }).secret;
+    try {
+      let val = revealed;
+      if (!val) {
+        const res = await apiFetch(`/api/vault/${entryId}/reveal`);
+        if (!res.ok) {
+          toast.error(
+            "Copie impossible",
+            (await res.text()) || `Erreur ${res.status}`,
+          );
+          return;
+        }
+        val = ((await res.json()) as { secret: string }).secret;
+      }
+      await navigator.clipboard.writeText(val);
+      setCopiedAt(Date.now());
+      setClipboardSecsLeft(CLIPBOARD_CLEAR_SEC);
+      toast.info("Copié", "Le secret est dans le presse-papier");
+    } catch (err) {
+      toast.error(
+        "Copie impossible",
+        err instanceof Error ? err.message : String(err),
+      );
     }
-    await navigator.clipboard.writeText(val);
-    setCopiedAt(Date.now());
-    setClipboardSecsLeft(CLIPBOARD_CLEAR_SEC);
   }
 
   async function handleDelete() {
@@ -109,20 +152,55 @@ export default function EntryDrawer({
       )
     )
       return;
-    const res = await apiFetch(`/api/vault/${entryId}`, { method: "DELETE" });
-    if (res.ok) onDeleted();
+    const name = entry.name;
+    try {
+      const res = await apiFetch(`/api/vault/${entryId}`, { method: "DELETE" });
+      if (res.ok) {
+        toast.success("Supprimée", name);
+        onDeleted();
+      } else {
+        toast.error(
+          "Suppression impossible",
+          (await res.text()) || `Erreur ${res.status}`,
+        );
+      }
+    } catch (err) {
+      toast.error(
+        "Suppression impossible",
+        err instanceof Error ? err.message : String(err),
+      );
+    }
   }
 
-  async function handleSave(patch: Partial<VaultEntry> & { secret?: string }) {
-    const res = await apiFetch(`/api/vault/${entryId}`, {
-      method: "PATCH",
-      body: JSON.stringify(patch),
-    });
-    if (!res.ok) return;
-    const updated = (await res.json()) as VaultEntry;
-    setEntry(updated);
-    onUpdated(updated);
-    setEditing(false);
+  async function handleSave(
+    patch: Partial<VaultEntry> & {
+      secret?: string;
+      allowed_user_ids?: string[];
+    },
+  ) {
+    try {
+      const res = await apiFetch(`/api/vault/${entryId}`, {
+        method: "PATCH",
+        body: JSON.stringify(patch),
+      });
+      if (!res.ok) {
+        toast.error(
+          "Enregistrement impossible",
+          (await res.text()) || `Erreur ${res.status}`,
+        );
+        return;
+      }
+      const updated = (await res.json()) as VaultEntry;
+      setEntry(updated);
+      onUpdated(updated);
+      setEditing(false);
+      toast.success("Enregistré", updated.name);
+    } catch (err) {
+      toast.error(
+        "Enregistrement impossible",
+        err instanceof Error ? err.message : String(err),
+      );
+    }
   }
 
   if (!entry) {
@@ -139,6 +217,9 @@ export default function EntryDrawer({
   const Icon = cat.icon;
   const expired =
     entry.expires_at && new Date(entry.expires_at).getTime() < Date.now();
+  const canEditAccess =
+    currentUserId === entry.created_by || currentUserId === projectOwnerId;
+  const visibility = entry.visibility ?? "all";
 
   return (
     <Shell onClose={onClose}>
@@ -198,7 +279,13 @@ export default function EntryDrawer({
         )}
 
         {editing ? (
-          <EditForm entry={entry} onCancel={() => setEditing(false)} onSave={handleSave} />
+          <EditForm
+            entry={entry}
+            members={members}
+            canEditAccess={canEditAccess}
+            onCancel={() => setEditing(false)}
+            onSave={handleSave}
+          />
         ) : (
           <>
             {entry.username && (
@@ -285,6 +372,47 @@ export default function EntryDrawer({
               />
             )}
 
+            <div className="space-y-1.5">
+              <p className="text-xs font-medium text-[var(--muted)]">Accès</p>
+              {visibility === "all" ? (
+                <p className="inline-flex items-center gap-1.5 text-sm">
+                  <Globe2 size={13} className="text-[var(--muted)]" />
+                  Tout le monde du projet
+                </p>
+              ) : (
+                <div className="space-y-2">
+                  <p className="inline-flex items-center gap-1.5 text-sm">
+                    <Lock size={13} className="text-[var(--muted)]" />
+                    Restreint à{" "}
+                    {(entry.allowed_users?.length ?? 0) + 1} personne
+                    {(entry.allowed_users?.length ?? 0) + 1 > 1 ? "s" : ""}
+                  </p>
+                  <div className="flex flex-wrap gap-1.5">
+                    {entry.creator && (
+                      <span className="inline-flex items-center gap-1 rounded-full bg-[var(--color-neutral-200)] dark:bg-[var(--color-neutral-700)] pl-1 pr-2 py-0.5 text-xs">
+                        <Avatar user={entry.creator} size="xs" />
+                        <span className="truncate max-w-[160px]">
+                          {entry.creator.email}
+                        </span>
+                        <span className="text-[10px] text-[var(--muted)]">
+                          créateur
+                        </span>
+                      </span>
+                    )}
+                    {(entry.allowed_users ?? []).map((u) => (
+                      <span
+                        key={u.id}
+                        className="inline-flex items-center gap-1 rounded-full bg-[var(--color-neutral-200)] dark:bg-[var(--color-neutral-700)] pl-1 pr-2 py-0.5 text-xs"
+                      >
+                        <Avatar user={u} size="xs" />
+                        <span className="truncate max-w-[160px]">{u.email}</span>
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+
             <hr className="border-[var(--border)]" />
 
             <div className="text-xs text-[var(--muted)] space-y-1">
@@ -320,10 +448,12 @@ function Row({
   value: string;
   copyable?: boolean;
 }) {
+  const toast = useToast();
   const [copied, setCopied] = useState(false);
   async function copy() {
     await navigator.clipboard.writeText(value);
     setCopied(true);
+    toast.info("Copié", `${label} dans le presse-papier`);
     setTimeout(() => setCopied(false), 1500);
   }
   return (
@@ -347,12 +477,21 @@ function Row({
 
 function EditForm({
   entry,
+  members,
+  canEditAccess,
   onCancel,
   onSave,
 }: {
   entry: VaultEntry;
+  members: PickableMember[] | null;
+  canEditAccess: boolean;
   onCancel: () => void;
-  onSave: (patch: Partial<VaultEntry> & { secret?: string }) => Promise<void>;
+  onSave: (
+    patch: Partial<VaultEntry> & {
+      secret?: string;
+      allowed_user_ids?: string[];
+    },
+  ) => Promise<void>;
 }) {
   const [name, setName] = useState(entry.name);
   const [category, setCategory] = useState<VaultCategory>(entry.category);
@@ -363,12 +502,26 @@ function EditForm({
   const [expiresAt, setExpiresAt] = useState(
     entry.expires_at ? entry.expires_at.slice(0, 10) : "",
   );
+  const [visibility, setVisibility] = useState<"all" | "restricted">(
+    entry.visibility ?? "all",
+  );
+  const [allowedUserIds, setAllowedUserIds] = useState<string[]>(
+    (entry.allowed_users ?? []).map((u) => u.id),
+  );
   const [saving, setSaving] = useState(false);
+
+  // Le créateur ne doit pas apparaître dans la liste sélectionnable.
+  const pickableMembers = (members ?? []).filter(
+    (m) => m.user_id !== entry.created_by,
+  );
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     setSaving(true);
-    const patch: Partial<VaultEntry> & { secret?: string } = {
+    const patch: Partial<VaultEntry> & {
+      secret?: string;
+      allowed_user_ids?: string[];
+    } = {
       name,
       category,
       username: username || null,
@@ -377,6 +530,11 @@ function EditForm({
       expires_at: expiresAt || null,
     };
     if (secret) patch.secret = secret;
+    if (canEditAccess) {
+      patch.visibility = visibility;
+      patch.allowed_user_ids =
+        visibility === "restricted" ? allowedUserIds : [];
+    }
     await onSave(patch);
     setSaving(false);
   }
@@ -453,6 +611,80 @@ function EditForm({
           className="rounded-md border border-[var(--border)] bg-[var(--background)] px-3 py-2 text-sm"
         />
       </div>
+
+      <fieldset className="space-y-2">
+        <legend className="text-xs font-medium">Accès</legend>
+        {canEditAccess ? (
+          <>
+            <label className="flex items-start gap-2 cursor-pointer rounded-md border border-[var(--border)] px-3 py-2 hover:border-[var(--color-neutral-400)]">
+              <input
+                type="radio"
+                name="visibility"
+                value="all"
+                checked={visibility === "all"}
+                onChange={() => setVisibility("all")}
+                className="mt-0.5 accent-[var(--color-brand-red)]"
+              />
+              <span className="flex-1">
+                <span className="flex items-center gap-1.5 text-sm font-medium">
+                  <Globe2 size={13} />
+                  Tout le monde du projet
+                </span>
+              </span>
+            </label>
+            <label className="flex items-start gap-2 cursor-pointer rounded-md border border-[var(--border)] px-3 py-2 hover:border-[var(--color-neutral-400)]">
+              <input
+                type="radio"
+                name="visibility"
+                value="restricted"
+                checked={visibility === "restricted"}
+                onChange={() => setVisibility("restricted")}
+                className="mt-0.5 accent-[var(--color-brand-red)]"
+              />
+              <span className="flex-1">
+                <span className="flex items-center gap-1.5 text-sm font-medium">
+                  <Lock size={13} />
+                  Seulement certaines personnes
+                </span>
+              </span>
+            </label>
+
+            {visibility === "restricted" && (
+              <div className="pt-1">
+                {members === null ? (
+                  <div className="flex items-center gap-2 text-xs text-[var(--muted)] px-1 py-2">
+                    <Loader2 size={12} className="animate-spin" />
+                    Chargement des membres…
+                  </div>
+                ) : (
+                  <MembersPicker
+                    members={pickableMembers}
+                    selected={allowedUserIds}
+                    onChange={setAllowedUserIds}
+                  />
+                )}
+              </div>
+            )}
+          </>
+        ) : (
+          <p className="inline-flex items-center gap-1.5 text-sm text-[var(--muted)]">
+            {visibility === "all" ? (
+              <>
+                <Globe2 size={13} />
+                Tout le monde du projet
+              </>
+            ) : (
+              <>
+                <Lock size={13} />
+                Restreint à{" "}
+                {(entry.allowed_users?.length ?? 0) + 1} personne
+                {(entry.allowed_users?.length ?? 0) + 1 > 1 ? "s" : ""}
+              </>
+            )}
+          </p>
+        )}
+      </fieldset>
+
       <div className="flex gap-2 pt-2">
         <button
           type="submit"

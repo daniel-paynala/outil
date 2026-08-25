@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import { Calendar, Clock, Link2, GitBranch, ChevronRight } from "lucide-react";
 import { clsx } from "clsx";
 import type { BoardColumn, CardSummary } from "@/lib/types";
+import Avatar from "@/core/ui/avatar";
 
 type SortKey =
   | "title"
@@ -154,9 +155,7 @@ function Row({
       <td className="px-3 py-2.5">
         {c.assignee ? (
           <span className="inline-flex items-center gap-1.5 text-xs">
-            <span className="size-5 rounded-full bg-[var(--color-neutral-300)] dark:bg-[var(--color-neutral-600)] flex items-center justify-center text-[10px] font-medium">
-              {c.assignee.email.charAt(0).toUpperCase()}
-            </span>
+            <Avatar user={c.assignee} size="xs" />
             <span className="truncate max-w-[140px]">{c.assignee.email}</span>
           </span>
         ) : (

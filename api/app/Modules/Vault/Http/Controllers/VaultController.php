@@ -19,11 +19,18 @@ class VaultController extends Controller
     public function index(Request $request, Project $project): JsonResponse
     {
         $this->ensureMember($request, $project);
+        $userId = $this->userId($request);
 
         $entries = VaultEntry::where('project_id', $project->id)
-            ->with('updater:id,email,name,avatar_path', 'creator:id,email,name,avatar_path')
+            ->with(
+                'updater:id,email,name,avatar_path',
+                'creator:id,email,name,avatar_path',
+                'allowedUsers:id,email,name,avatar_path',
+            )
             ->orderBy('name')
-            ->get();
+            ->get()
+            ->filter(fn (VaultEntry $e) => $e->isAccessibleBy($userId))
+            ->values();
 
         return response()->json($entries);
     }
@@ -40,19 +47,34 @@ class VaultController extends Controller
             'notes' => ['nullable', 'string', 'max:5000'],
             'url' => ['nullable', 'url', 'max:500'],
             'expires_at' => ['nullable', 'date'],
+            'visibility' => ['sometimes', 'string', 'in:all,restricted'],
+            'allowed_user_ids' => ['sometimes', 'array'],
+            'allowed_user_ids.*' => ['uuid', 'exists:users,id'],
         ]);
 
         $userId = $this->userId($request);
+        $allowedIds = $data['allowed_user_ids'] ?? [];
+        unset($data['allowed_user_ids']);
 
         $entry = VaultEntry::create([
             ...$data,
+            'visibility' => $data['visibility'] ?? 'all',
             'project_id' => $project->id,
             'created_by' => $userId,
             'updated_by' => $userId,
         ]);
 
+        // Sync allowed users si restricted (filtre les non-membres du projet)
+        if (($entry->visibility === 'restricted') && ! empty($allowedIds)) {
+            $memberIds = $project->projectMembers()->pluck('user_id')->all();
+            $validIds = array_values(array_intersect($allowedIds, $memberIds));
+            $entry->allowedUsers()->sync($validIds);
+        }
+
         $this->log($entry->id, $userId, 'created', $request);
         $this->activity->log($project->id, $userId, 'vault.created', $entry, $entry->name);
+
+        $entry->load('allowedUsers:id,email,name,avatar_path');
 
         return response()->json($entry, 201);
     }
@@ -62,9 +84,13 @@ class VaultController extends Controller
      */
     public function show(Request $request, VaultEntry $entry): JsonResponse
     {
-        $this->ensureMember($request, $entry->project);
+        $this->ensureCanAccess($request, $entry);
 
-        $entry->load('creator:id,email,name,avatar_path', 'updater:id,email,name,avatar_path');
+        $entry->load(
+            'creator:id,email,name,avatar_path',
+            'updater:id,email,name,avatar_path',
+            'allowedUsers:id,email,name,avatar_path',
+        );
         $this->log($entry->id, $this->userId($request), 'viewed', $request);
 
         return response()->json($entry);
@@ -75,7 +101,7 @@ class VaultController extends Controller
      */
     public function reveal(Request $request, VaultEntry $entry): JsonResponse
     {
-        $this->ensureMember($request, $entry->project);
+        $this->ensureCanAccess($request, $entry);
 
         $userId = $this->userId($request);
         $this->log($entry->id, $userId, 'revealed', $request);
@@ -88,7 +114,7 @@ class VaultController extends Controller
 
     public function update(Request $request, VaultEntry $entry): JsonResponse
     {
-        $this->ensureMember($request, $entry->project);
+        $this->ensureCanAccess($request, $entry);
 
         $data = $request->validate([
             'name' => ['sometimes', 'string', 'max:120'],
@@ -98,20 +124,48 @@ class VaultController extends Controller
             'notes' => ['nullable', 'string', 'max:5000'],
             'url' => ['nullable', 'url', 'max:500'],
             'expires_at' => ['nullable', 'date'],
+            'visibility' => ['sometimes', 'string', 'in:all,restricted'],
+            'allowed_user_ids' => ['sometimes', 'nullable', 'array'],
+            'allowed_user_ids.*' => ['uuid', 'exists:users,id'],
         ]);
 
+        // Modifier la visibilité ou la liste blanche : créateur OU owner du projet
+        $isVisibilityChange = $request->has('visibility') || $request->has('allowed_user_ids');
+        if ($isVisibilityChange) {
+            $this->ensureCanManageVisibility($request, $entry);
+        }
+
         $userId = $this->userId($request);
+        $allowedIds = array_key_exists('allowed_user_ids', $data) ? ($data['allowed_user_ids'] ?? []) : null;
+        unset($data['allowed_user_ids']);
+
         $entry->update([...$data, 'updated_by' => $userId]);
+
+        if ($allowedIds !== null) {
+            if ($entry->visibility === 'restricted') {
+                $memberIds = $entry->project->projectMembers()->pluck('user_id')->all();
+                $validIds = array_values(array_intersect($allowedIds, $memberIds));
+                $entry->allowedUsers()->sync($validIds);
+            } else {
+                // En mode 'all' la liste n'a plus de sens — on la vide
+                $entry->allowedUsers()->sync([]);
+            }
+        } elseif (isset($data['visibility']) && $data['visibility'] === 'all') {
+            // Switch all sans payload allowed_user_ids → vide la liste pour cohérence
+            $entry->allowedUsers()->sync([]);
+        }
 
         $this->log($entry->id, $userId, 'updated', $request);
         $this->activity->log($entry->project_id, $userId, 'vault.updated', $entry, $entry->name);
+
+        $entry->load('allowedUsers:id,email,name,avatar_path');
 
         return response()->json($entry);
     }
 
     public function destroy(Request $request, VaultEntry $entry): JsonResponse
     {
-        $this->ensureMember($request, $entry->project);
+        $this->ensureCanAccess($request, $entry);
 
         $userId = $this->userId($request);
         $name = $entry->name;
@@ -127,7 +181,7 @@ class VaultController extends Controller
 
     public function accessLog(Request $request, VaultEntry $entry): JsonResponse
     {
-        $this->ensureMember($request, $entry->project);
+        $this->ensureCanAccess($request, $entry);
 
         $logs = $entry->accessLogs()
             ->with('user:id,email,name,avatar_path')
@@ -159,6 +213,39 @@ class VaultController extends Controller
     {
         if (! $project->hasMember($this->userId($request))) {
             abort(403, 'Not a member of this project');
+        }
+    }
+
+    /**
+     * L'utilisateur doit être membre du projet ET avoir accès à l'entry
+     * (créateur, mode 'all', ou listé dans allowed_users si 'restricted').
+     */
+    private function ensureCanAccess(Request $request, VaultEntry $entry): void
+    {
+        $this->ensureMember($request, $entry->project);
+        if (! $entry->isAccessibleBy($this->userId($request))) {
+            abort(403, 'No access to this vault entry');
+        }
+    }
+
+    /**
+     * Modification de la visibilité ou de la liste blanche : seulement le
+     * créateur de l'entry ou un owner du projet.
+     */
+    private function ensureCanManageVisibility(Request $request, VaultEntry $entry): void
+    {
+        $userId = $this->userId($request);
+        if ($entry->created_by === $userId) {
+            return;
+        }
+
+        $isOwner = $entry->project->projectMembers()
+            ->where('user_id', $userId)
+            ->where('role', 'owner')
+            ->exists();
+
+        if (! $isOwner) {
+            abort(403, 'Only the creator or a project owner can change visibility');
         }
     }
 }

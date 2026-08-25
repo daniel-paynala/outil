@@ -2,6 +2,7 @@
 
 import { CalendarDays, Hash, Link2, User as UserIcon } from "lucide-react";
 import type { RoadmapItem } from "@/lib/types";
+import Avatar from "@/core/ui/avatar";
 
 const EFFORT_COLOR: Record<string, string> = {
   S: "var(--color-neutral-400)",
@@ -53,13 +54,23 @@ export default function ItemCard({
             {item.effort}
           </span>
         )}
-        {item.target_date && (
-          <span className="inline-flex items-center gap-1 text-[10px] text-[var(--muted)]">
+        {(item.start_date || item.target_date) && (
+          <span
+            className="inline-flex items-center gap-1 text-[10px] text-[var(--muted)]"
+            title={
+              item.start_date && item.target_date
+                ? `Du ${item.start_date} au ${item.target_date}`
+                : item.start_date
+                  ? `Début ${item.start_date}`
+                  : `Échéance ${item.target_date}`
+            }
+          >
             <CalendarDays size={10} strokeWidth={2} />
-            {new Date(item.target_date).toLocaleDateString("fr-FR", {
-              day: "numeric",
-              month: "short",
-            })}
+            {item.start_date && item.target_date
+              ? `${formatShort(item.start_date)} → ${formatShort(item.target_date)}`
+              : item.start_date
+                ? `dès ${formatShort(item.start_date)}`
+                : formatShort(item.target_date as string)}
           </span>
         )}
         {(item.cards_count ?? 0) > 0 && (
@@ -88,15 +99,34 @@ export default function ItemCard({
             )}
           </div>
         )}
-        {item.owner && (
-          <span
-            className="ml-auto size-5 rounded-full bg-[var(--color-neutral-300)] dark:bg-[var(--color-neutral-600)] flex items-center justify-center text-[10px] font-medium"
-            title={item.owner.email}
+        {item.owners && item.owners.length > 0 && (
+          <div
+            className="ml-auto flex -space-x-1.5"
+            title={item.owners.map((o) => o.email).join(", ")}
           >
-            {item.owner.email.charAt(0).toUpperCase()}
-          </span>
+            {item.owners.slice(0, 3).map((o) => (
+              <Avatar
+                key={o.id}
+                user={o}
+                size="xs"
+                className="ring-2 ring-[var(--background)]"
+              />
+            ))}
+            {item.owners.length > 3 && (
+              <span className="size-5 rounded-full bg-[var(--color-neutral-200)] dark:bg-[var(--color-neutral-700)] ring-2 ring-[var(--background)] flex items-center justify-center text-[9px] font-medium text-[var(--muted)]">
+                +{item.owners.length - 3}
+              </span>
+            )}
+          </div>
         )}
       </div>
     </div>
   );
+}
+
+function formatShort(iso: string): string {
+  return new Date(iso).toLocaleDateString("fr-FR", {
+    day: "numeric",
+    month: "short",
+  });
 }

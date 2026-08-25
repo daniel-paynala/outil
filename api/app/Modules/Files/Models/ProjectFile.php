@@ -34,6 +34,7 @@ class ProjectFile extends Model
 
     protected $fillable = [
         'project_id',
+        'folder_id',
         'path',
         'name',
         'size_bytes',
@@ -56,5 +57,10 @@ class ProjectFile extends Model
     public function uploader(): BelongsTo
     {
         return $this->belongsTo(User::class, 'uploaded_by');
+    }
+
+    public function folder(): BelongsTo
+    {
+        return $this->belongsTo(ProjectFolder::class, 'folder_id');
     }
 }

@@ -18,12 +18,12 @@ class RoadmapItem extends Model
     protected $fillable = [
         'project_id',
         'release_id',
-        'owner_id',
         'title',
         'description',
         'horizon',
         'position',
         'effort',
+        'start_date',
         'target_date',
         'tags',
         'created_by',
@@ -34,6 +34,7 @@ class RoadmapItem extends Model
     {
         return [
             'position' => 'integer',
+            'start_date' => 'date',
             'target_date' => 'date',
             'tags' => 'array',
         ];
@@ -49,9 +50,10 @@ class RoadmapItem extends Model
         return $this->belongsTo(Release::class);
     }
 
-    public function owner(): BelongsTo
+    public function owners(): BelongsToMany
     {
-        return $this->belongsTo(User::class, 'owner_id');
+        return $this->belongsToMany(User::class, 'roadmap_item_owners')
+            ->withTimestamps();
     }
 
     public function creator(): BelongsTo

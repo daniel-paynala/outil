@@ -5,6 +5,7 @@ import { useDroppable } from "@dnd-kit/core";
 import { Plus, MoreHorizontal, Trash2, CheckCircle2, Circle } from "lucide-react";
 import type { BoardColumn, CardSummary } from "@/lib/types";
 import { apiFetch } from "@/lib/api/client";
+import { useToast } from "@/core/toast/toast-context";
 import BoardCard from "./card";
 
 export default function BoardColumnView({
@@ -23,24 +24,55 @@ export default function BoardColumnView({
   onOpenCard: (cardId: string) => void;
 }) {
   const { setNodeRef, isOver } = useDroppable({ id: column.id });
+  const toast = useToast();
   const [adding, setAdding] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
 
   async function handleDeleteColumn() {
     if (!confirm(`Supprimer la colonne "${column.name}" et toutes ses cartes ?`))
       return;
-    const res = await apiFetch(`/api/columns/${column.id}`, { method: "DELETE" });
-    if (res.ok) onDeleteColumn();
+    try {
+      const res = await apiFetch(`/api/columns/${column.id}`, { method: "DELETE" });
+      if (res.ok) {
+        onDeleteColumn();
+        toast.success("Supprimée", `Colonne « ${column.name} »`);
+      } else {
+        toast.error(
+          "Suppression impossible",
+          (await res.text()) || `Erreur ${res.status}`,
+        );
+      }
+    } catch (err) {
+      toast.error(
+        "Suppression impossible",
+        err instanceof Error ? err.message : String(err),
+      );
+    }
   }
 
   async function toggleIsDone() {
     setMenuOpen(false);
     const next = !column.is_done;
-    const res = await apiFetch(`/api/columns/${column.id}`, {
-      method: "PATCH",
-      body: JSON.stringify({ is_done: next }),
-    });
-    if (!res.ok) return;
+    let res: Response;
+    try {
+      res = await apiFetch(`/api/columns/${column.id}`, {
+        method: "PATCH",
+        body: JSON.stringify({ is_done: next }),
+      });
+    } catch (err) {
+      toast.error(
+        "Mise à jour impossible",
+        err instanceof Error ? err.message : String(err),
+      );
+      return;
+    }
+    if (!res.ok) {
+      toast.error(
+        "Mise à jour impossible",
+        (await res.text()) || `Erreur ${res.status}`,
+      );
+      return;
+    }
     const updated = (await res.json()) as BoardColumn;
     // Le PATCH renvoie la colonne sans cards — on garde celles déjà en mémoire,
     // et on met à jour completed_at localement pour refléter le serveur.
@@ -151,6 +183,7 @@ function NewCardForm({
   onCreated: (card: CardSummary) => void;
   onCancel: () => void;
 }) {
+  const toast = useToast();
   const [title, setTitle] = useState("");
   const [loading, setLoading] = useState(false);
 
@@ -158,14 +191,29 @@ function NewCardForm({
     e.preventDefault();
     if (!title.trim()) return;
     setLoading(true);
-    const res = await apiFetch(`/api/columns/${columnId}/cards`, {
-      method: "POST",
-      body: JSON.stringify({ title: title.trim() }),
-    });
-    setLoading(false);
-    if (!res.ok) return;
-    const card = (await res.json()) as CardSummary;
-    onCreated(card);
+    try {
+      const res = await apiFetch(`/api/columns/${columnId}/cards`, {
+        method: "POST",
+        body: JSON.stringify({ title: title.trim() }),
+      });
+      setLoading(false);
+      if (!res.ok) {
+        toast.error(
+          "Création impossible",
+          (await res.text()) || `Erreur ${res.status}`,
+        );
+        return;
+      }
+      const card = (await res.json()) as CardSummary;
+      toast.success("Créée", card.title);
+      onCreated(card);
+    } catch (err) {
+      setLoading(false);
+      toast.error(
+        "Création impossible",
+        err instanceof Error ? err.message : String(err),
+      );
+    }
   }
 
   return (

@@ -22,6 +22,7 @@ export type User = {
   email: string;
   name: string | null;
   role: "admin" | "member";
+  avatar_url?: string | null;
 };
 
 export type Label = {
@@ -48,7 +49,7 @@ export type CardSummary = {
   created_at: string;
   updated_at: string;
   labels?: Label[];
-  assignee?: Pick<User, "id" | "email" | "name"> | null;
+  assignee?: Pick<User, "id" | "email" | "name" | "avatar_url"> | null;
   dependencies_count?: number;
   children_count?: number;
   comments_count?: number;
@@ -61,15 +62,15 @@ export type CardComment = {
   content: string;
   created_at: string;
   updated_at: string;
-  user?: Pick<User, "id" | "email" | "name">;
+  user?: Pick<User, "id" | "email" | "name" | "avatar_url">;
 };
 
 export type Card = CardSummary;
 
 export type CardDetail = CardSummary & {
   labels: Label[];
-  assignee: Pick<User, "id" | "email" | "name"> | null;
-  creator: Pick<User, "id" | "email" | "name"> | null;
+  assignee: Pick<User, "id" | "email" | "name" | "avatar_url"> | null;
+  creator: Pick<User, "id" | "email" | "name" | "avatar_url"> | null;
   parent: { id: string; title: string } | null;
   children: Array<{
     id: string;
@@ -79,7 +80,7 @@ export type CardDetail = CardSummary & {
     priority: string | null;
     due_date: string | null;
     assigned_to: string | null;
-    assignee: Pick<User, "id" | "email" | "name"> | null;
+    assignee: Pick<User, "id" | "email" | "name" | "avatar_url"> | null;
   }>;
   dependencies: Array<{ id: string; title: string; column_id: string }>;
   dependents: Array<{ id: string; title: string; column_id: string }>;
@@ -116,6 +117,7 @@ export type MyTask = CardSummary & {
 export type ProjectFile = {
   id: string;
   project_id: string;
+  folder_id: string | null;
   path: string;
   name: string;
   size_bytes: number;
@@ -123,7 +125,31 @@ export type ProjectFile = {
   uploaded_by: string;
   created_at: string;
   updated_at: string;
-  uploader?: Pick<User, "id" | "email" | "name">;
+  uploader?: Pick<User, "id" | "email" | "name" | "avatar_url">;
+};
+
+export type ProjectFolder = {
+  id: string;
+  project_id: string;
+  parent_id: string | null;
+  name: string;
+  created_by: string;
+  created_at: string;
+  updated_at: string;
+  files_count?: number;
+  children_count?: number;
+};
+
+export type CardAttachment = {
+  id: string;
+  card_id: string;
+  path: string;
+  name: string;
+  size_bytes: number | null;
+  mime_type: string | null;
+  uploaded_by: string;
+  created_at: string;
+  uploader?: Pick<User, "id" | "email" | "name" | "avatar_url">;
 };
 
 export type DocPageSummary = {
@@ -142,8 +168,8 @@ export type DocPage = DocPageSummary & {
   updated_by: string | null;
   created_at: string;
   deleted_at: string | null;
-  creator?: Pick<User, "id" | "email" | "name">;
-  updater?: Pick<User, "id" | "email" | "name"> | null;
+  creator?: Pick<User, "id" | "email" | "name" | "avatar_url">;
+  updater?: Pick<User, "id" | "email" | "name" | "avatar_url"> | null;
 };
 
 export type DocRevision = {
@@ -153,7 +179,7 @@ export type DocRevision = {
   content: string | null;
   created_by: string;
   created_at: string;
-  creator?: Pick<User, "id" | "email" | "name">;
+  creator?: Pick<User, "id" | "email" | "name" | "avatar_url">;
 };
 
 export type VaultCategory =
@@ -178,8 +204,10 @@ export type VaultEntry = {
   created_at: string;
   updated_at: string;
   deleted_at: string | null;
-  creator?: Pick<User, "id" | "email" | "name">;
-  updater?: Pick<User, "id" | "email" | "name"> | null;
+  creator?: Pick<User, "id" | "email" | "name" | "avatar_url">;
+  updater?: Pick<User, "id" | "email" | "name" | "avatar_url"> | null;
+  visibility?: "all" | "restricted";
+  allowed_users?: Array<Pick<User, "id" | "email" | "name" | "avatar_url">>;
 };
 
 export type VaultAccessLog = {
@@ -196,7 +224,7 @@ export type VaultAccessLog = {
   ip: string | null;
   user_agent: string | null;
   created_at: string;
-  user?: Pick<User, "id" | "email" | "name">;
+  user?: Pick<User, "id" | "email" | "name" | "avatar_url">;
 };
 
 export type TimeEntry = {
@@ -210,7 +238,7 @@ export type TimeEntry = {
   seconds: number | null;
   created_at: string;
   updated_at: string;
-  user?: Pick<User, "id" | "email" | "name">;
+  user?: Pick<User, "id" | "email" | "name" | "avatar_url">;
   card?: { id: string; title: string; column_id: string } | null;
   project?: Pick<Project, "id" | "name" | "slug" | "color">;
 };
@@ -237,8 +265,8 @@ export type Decision = {
   updated_by: string | null;
   created_at: string;
   updated_at: string;
-  creator?: Pick<User, "id" | "email" | "name">;
-  updater?: Pick<User, "id" | "email" | "name"> | null;
+  creator?: Pick<User, "id" | "email" | "name" | "avatar_url">;
+  updater?: Pick<User, "id" | "email" | "name" | "avatar_url"> | null;
 };
 
 export type ActivityLog = {
@@ -251,7 +279,7 @@ export type ActivityLog = {
   subject_name: string | null;
   metadata: Record<string, unknown> | null;
   created_at: string;
-  actor?: Pick<User, "id" | "email" | "name"> | null;
+  actor?: Pick<User, "id" | "email" | "name" | "avatar_url"> | null;
 };
 
 type SearchProjectBadge = { id: string; name: string; color: string };
@@ -287,7 +315,7 @@ export type GithubRepo = {
   created_at: string;
   updated_at: string;
   commits_count?: number;
-  linker?: Pick<User, "id" | "email" | "name">;
+  linker?: Pick<User, "id" | "email" | "name" | "avatar_url">;
 };
 
 export type GithubCommit = {
@@ -327,12 +355,12 @@ export type RoadmapItem = {
   id: string;
   project_id: string;
   release_id: string | null;
-  owner_id: string | null;
   title: string;
   description: string | null;
   horizon: RoadmapHorizon;
   position: number;
   effort: RoadmapEffort | null;
+  start_date: string | null;
   target_date: string | null;
   tags: string[] | null;
   created_by: string;
@@ -340,7 +368,7 @@ export type RoadmapItem = {
   created_at: string;
   updated_at: string;
   cards_count?: number;
-  owner?: Pick<User, "id" | "email" | "name"> | null;
+  owners?: Pick<User, "id" | "email" | "name" | "avatar_url">[];
   release?: Pick<Release, "id" | "name" | "color" | "shipped_at"> | null;
 };
 

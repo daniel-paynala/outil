@@ -5,6 +5,7 @@ namespace App\Modules\Roadmap\Http\Controllers;
 use App\Http\Controllers\Controller;
 use App\Modules\Activity\Services\ActivityLogger;
 use App\Modules\Core\Models\Project;
+use App\Modules\Notifications\Services\NotificationService;
 use App\Modules\Roadmap\Models\Release;
 use App\Modules\Roadmap\Models\RoadmapItem;
 use Illuminate\Http\JsonResponse;
@@ -17,7 +18,10 @@ class RoadmapController extends Controller
 
     private const EFFORTS = ['S', 'M', 'L', 'XL'];
 
-    public function __construct(private readonly ActivityLogger $activity) {}
+    public function __construct(
+        private readonly ActivityLogger $activity,
+        private readonly NotificationService $notify,
+    ) {}
 
     /**
      * Returns everything needed to render any of the 6 views in one shot.
@@ -27,7 +31,7 @@ class RoadmapController extends Controller
         $this->ensureMember($request, $project);
 
         $items = RoadmapItem::where('project_id', $project->id)
-            ->with(['owner:id,email,name,avatar_path', 'release:id,name,color,shipped_at'])
+            ->with(['owners:id,email,name,avatar_path', 'release:id,name,color,shipped_at'])
             ->withCount('cards')
             ->orderBy('horizon')
             ->orderBy('position')
@@ -54,12 +58,17 @@ class RoadmapController extends Controller
             'description' => ['nullable', 'string'],
             'horizon' => ['nullable', 'string', 'in:'.implode(',', self::HORIZONS)],
             'effort' => ['nullable', 'string', 'in:'.implode(',', self::EFFORTS)],
-            'target_date' => ['nullable', 'date'],
+            'start_date' => ['nullable', 'date'],
+            'target_date' => ['nullable', 'date', 'after_or_equal:start_date'],
             'release_id' => ['nullable', 'uuid', 'exists:releases,id'],
-            'owner_id' => ['nullable', 'uuid', 'exists:users,id'],
+            'owner_ids' => ['nullable', 'array'],
+            'owner_ids.*' => ['uuid', 'exists:users,id'],
             'tags' => ['nullable', 'array'],
             'tags.*' => ['string', 'max:40'],
         ]);
+
+        $ownerIds = $data['owner_ids'] ?? [];
+        unset($data['owner_ids']);
 
         $userId = $this->userId($request);
         $horizon = $data['horizon'] ?? 'later';
@@ -77,7 +86,11 @@ class RoadmapController extends Controller
             'updated_by' => $userId,
         ]);
 
-        $item->load(['owner:id,email,name,avatar_path', 'release:id,name,color']);
+        if (! empty($ownerIds)) {
+            $item->owners()->sync($ownerIds);
+        }
+
+        $item->load(['owners:id,email,name,avatar_path', 'release:id,name,color']);
         $item->loadCount('cards');
 
         $this->activity->log($project->id, $userId, 'roadmap.created', $item, $item->title);
@@ -90,7 +103,7 @@ class RoadmapController extends Controller
         $this->ensureMember($request, $item->project);
 
         $item->load([
-            'owner:id,email,name,avatar_path',
+            'owners:id,email,name,avatar_path',
             'creator:id,email,name,avatar_path',
             'release:id,name,color,shipped_at',
             'cards:id,title,column_id,project_id',
@@ -108,17 +121,27 @@ class RoadmapController extends Controller
             'description' => ['nullable', 'string'],
             'horizon' => ['sometimes', 'string', 'in:'.implode(',', self::HORIZONS)],
             'effort' => ['nullable', 'string', 'in:'.implode(',', self::EFFORTS)],
-            'target_date' => ['nullable', 'date'],
+            'start_date' => ['nullable', 'date'],
+            'target_date' => ['nullable', 'date', 'after_or_equal:start_date'],
             'release_id' => ['nullable', 'uuid', 'exists:releases,id'],
-            'owner_id' => ['nullable', 'uuid', 'exists:users,id'],
+            'owner_ids' => ['sometimes', 'nullable', 'array'],
+            'owner_ids.*' => ['uuid', 'exists:users,id'],
             'tags' => ['nullable', 'array'],
             'tags.*' => ['string', 'max:40'],
         ]);
 
+        $ownerIds = $data['owner_ids'] ?? null;
+        unset($data['owner_ids']);
+
         $userId = $this->userId($request);
         $item->update([...$data, 'updated_by' => $userId]);
 
-        $item->load(['owner:id,email,name,avatar_path', 'release:id,name,color']);
+        // Sync owners only if explicitly provided in the payload
+        if ($request->has('owner_ids')) {
+            $item->owners()->sync($ownerIds ?? []);
+        }
+
+        $item->load(['owners:id,email,name,avatar_path', 'release:id,name,color']);
         $item->loadCount('cards');
 
         $this->activity->log($item->project_id, $userId, 'roadmap.updated', $item, $item->title);
@@ -237,13 +260,24 @@ class RoadmapController extends Controller
             'color' => ['nullable', 'string', 'regex:/^#[0-9a-fA-F]{6}$/'],
         ]);
 
+        $userId = $this->userId($request);
         $release = Release::create([
             ...$data,
             'project_id' => $project->id,
-            'created_by' => $this->userId($request),
+            'created_by' => $userId,
         ]);
 
         $release->loadCount('items');
+
+        $this->notify->forProjectMembers(
+            projectId: $project->id,
+            type: 'release.created',
+            title: 'Nouvelle release',
+            body: $release->name,
+            link: "/projects/{$project->id}/roadmap",
+            actorId: $userId,
+            exceptUserId: $userId,
+        );
 
         return response()->json($release, 201);
     }

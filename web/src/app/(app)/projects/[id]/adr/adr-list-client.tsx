@@ -7,6 +7,7 @@ import { Plus, ScrollText, Loader2 } from "lucide-react";
 import { clsx } from "clsx";
 import type { Decision, DecisionStatus } from "@/lib/types";
 import { apiFetch } from "@/lib/api/client";
+import { useToast } from "@/core/toast/toast-context";
 
 const STATUS_LABELS: Record<DecisionStatus, string> = {
   proposed: "Proposée",
@@ -23,6 +24,7 @@ export default function AdrListClient({
   initialDecisions: Decision[];
 }) {
   const router = useRouter();
+  const toast = useToast();
   const [decisions] = useState<Decision[]>(initialDecisions);
   const [creating, setCreating] = useState(false);
   const [title, setTitle] = useState("");
@@ -31,18 +33,33 @@ export default function AdrListClient({
   async function create() {
     if (!title.trim()) return;
     setLoading(true);
-    const res = await apiFetch(`/api/projects/${projectId}/decisions`, {
-      method: "POST",
-      body: JSON.stringify({
-        title: title.trim(),
-        status: "proposed",
-      }),
-    });
-    setLoading(false);
-    if (!res.ok) return;
-    const created = (await res.json()) as Decision;
-    router.push(`/projects/${projectId}/adr/${created.id}`);
-    router.refresh();
+    try {
+      const res = await apiFetch(`/api/projects/${projectId}/decisions`, {
+        method: "POST",
+        body: JSON.stringify({
+          title: title.trim(),
+          status: "proposed",
+        }),
+      });
+      setLoading(false);
+      if (!res.ok) {
+        toast.error(
+          "Création impossible",
+          (await res.text()) || `Erreur ${res.status}`,
+        );
+        return;
+      }
+      const created = (await res.json()) as Decision;
+      toast.success("Créée", created.title);
+      router.push(`/projects/${projectId}/adr/${created.id}`);
+      router.refresh();
+    } catch (err) {
+      setLoading(false);
+      toast.error(
+        "Création impossible",
+        err instanceof Error ? err.message : String(err),
+      );
+    }
   }
 
   return (

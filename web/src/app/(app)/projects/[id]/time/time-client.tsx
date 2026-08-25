@@ -11,6 +11,7 @@ import {
 } from "lucide-react";
 import { clsx } from "clsx";
 import { apiFetch } from "@/lib/api/client";
+import { useToast } from "@/core/toast/toast-context";
 import type { TimeEntry } from "@/lib/types";
 
 type CardOption = { id: string; title: string };
@@ -28,6 +29,7 @@ export default function TimeClient({
   initialCards: CardOption[];
   initialRunning: TimeEntry | null;
 }) {
+  const toast = useToast();
   const [entries, setEntries] = useState<TimeEntry[]>(initialEntries);
   const [running, setRunning] = useState<TimeEntry | null>(initialRunning);
   const [mineOnly, setMineOnly] = useState(false);
@@ -51,29 +53,61 @@ export default function TimeClient({
   const totals = useMemo(() => bucketTotals(filtered), [filtered]);
 
   async function handleStart() {
-    const res = await apiFetch(`/api/projects/${projectId}/time/start`, {
-      method: "POST",
-      body: JSON.stringify({
-        card_id: startCard || null,
-        description: startDesc || null,
-      }),
-    });
-    if (!res.ok) return;
-    const entry = (await res.json()) as TimeEntry;
-    setRunning(entry);
-    setStartDesc("");
-    setStartCard("");
+    try {
+      const res = await apiFetch(`/api/projects/${projectId}/time/start`, {
+        method: "POST",
+        body: JSON.stringify({
+          card_id: startCard || null,
+          description: startDesc || null,
+        }),
+      });
+      if (!res.ok) {
+        toast.error(
+          "Démarrage impossible",
+          (await res.text()) || `Erreur ${res.status}`,
+        );
+        return;
+      }
+      const entry = (await res.json()) as TimeEntry;
+      setRunning(entry);
+      setStartDesc("");
+      setStartCard("");
+      toast.success("Minuteur démarré", entry.description ?? undefined);
+    } catch (err) {
+      toast.error(
+        "Démarrage impossible",
+        err instanceof Error ? err.message : String(err),
+      );
+    }
   }
 
   async function handleStop() {
     if (!running) return;
-    const res = await apiFetch(`/api/time/${running.id}/stop`, {
-      method: "POST",
-    });
-    if (!res.ok) return;
-    const stopped = (await res.json()) as TimeEntry;
-    setRunning(null);
-    setEntries((prev) => [stopped, ...prev.filter((e) => e.id !== stopped.id)]);
+    try {
+      const res = await apiFetch(`/api/time/${running.id}/stop`, {
+        method: "POST",
+      });
+      if (!res.ok) {
+        toast.error(
+          "Arrêt impossible",
+          (await res.text()) || `Erreur ${res.status}`,
+        );
+        return;
+      }
+      const stopped = (await res.json()) as TimeEntry;
+      setRunning(null);
+      setEntries((prev) => [stopped, ...prev.filter((e) => e.id !== stopped.id)]);
+      const seconds = stopped.seconds ?? 0;
+      const h = Math.floor(seconds / 3600);
+      const m = Math.floor((seconds % 3600) / 60);
+      const dur = h > 0 ? `${h}h${String(m).padStart(2, "0")}` : `${m}min`;
+      toast.success("Minuteur arrêté", `Durée enregistrée : ${dur}`);
+    } catch (err) {
+      toast.error(
+        "Arrêt impossible",
+        err instanceof Error ? err.message : String(err),
+      );
+    }
   }
 
   async function handleManual(entry: TimeEntry) {
@@ -84,8 +118,23 @@ export default function TimeClient({
   async function handleDelete(entry: TimeEntry) {
     if (entry.user_id !== currentUserId) return;
     if (!confirm("Supprimer cette entrée ?")) return;
-    const res = await apiFetch(`/api/time/${entry.id}`, { method: "DELETE" });
-    if (res.ok) setEntries((prev) => prev.filter((e) => e.id !== entry.id));
+    try {
+      const res = await apiFetch(`/api/time/${entry.id}`, { method: "DELETE" });
+      if (res.ok) {
+        setEntries((prev) => prev.filter((e) => e.id !== entry.id));
+        toast.success("Supprimée", "Entrée de temps");
+      } else {
+        toast.error(
+          "Suppression impossible",
+          (await res.text()) || `Erreur ${res.status}`,
+        );
+      }
+    } catch (err) {
+      toast.error(
+        "Suppression impossible",
+        err instanceof Error ? err.message : String(err),
+      );
+    }
   }
 
   const runningSeconds = running
@@ -273,6 +322,7 @@ function ManualEntryForm({
   onClose: () => void;
   onCreated: (e: TimeEntry) => void;
 }) {
+  const toast = useToast();
   const [date, setDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [time, setTime] = useState("09:00");
   const [hours, setHours] = useState("1");
@@ -301,21 +351,32 @@ function ManualEntryForm({
     }
     setLoading(true);
     setError(null);
-    const res = await apiFetch(`/api/projects/${projectId}/time`, {
-      method: "POST",
-      body: JSON.stringify({
-        description: description || null,
-        card_id: cardId || null,
-        started_at: `${date}T${time}:00`,
-        seconds,
-      }),
-    });
-    setLoading(false);
-    if (!res.ok) {
-      setError(await res.text());
-      return;
+    try {
+      const res = await apiFetch(`/api/projects/${projectId}/time`, {
+        method: "POST",
+        body: JSON.stringify({
+          description: description || null,
+          card_id: cardId || null,
+          started_at: `${date}T${time}:00`,
+          seconds,
+        }),
+      });
+      setLoading(false);
+      if (!res.ok) {
+        const txt = await res.text();
+        setError(txt);
+        toast.error("Création impossible", txt || `Erreur ${res.status}`);
+        return;
+      }
+      const created = (await res.json()) as TimeEntry;
+      toast.success("Créée", "Entrée de temps");
+      onCreated(created);
+    } catch (err) {
+      setLoading(false);
+      const msg = err instanceof Error ? err.message : String(err);
+      setError(msg);
+      toast.error("Création impossible", msg);
     }
-    onCreated((await res.json()) as TimeEntry);
   }
 
   return (

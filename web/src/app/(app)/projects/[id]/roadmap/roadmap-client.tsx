@@ -20,6 +20,7 @@ import type {
   RoadmapView,
 } from "@/lib/types";
 import { apiFetch } from "@/lib/api/client";
+import { useToast } from "@/core/toast/toast-context";
 import ViewBoard from "./view-board";
 import ViewTimeline from "./view-timeline";
 import ViewReleases from "./view-releases";
@@ -54,6 +55,7 @@ export default function RoadmapClient({
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
+  const toast = useToast();
 
   const [items, setItems] = useState<RoadmapItem[]>(initialItems);
   const [releases, setReleases] = useState<Release[]>(initialReleases);
@@ -136,24 +138,35 @@ export default function RoadmapClient({
         ];
       });
 
-      const res = await apiFetch(`/api/projects/${projectId}/roadmap/move`, {
-        method: "POST",
-        body: JSON.stringify({
-          item_id: itemId,
-          to_horizon: toHorizon,
-          to_position: toPosition,
-        }),
-      });
-      if (!res.ok) {
-        // Refetch to revert
-        const fresh = await apiFetch(`/api/projects/${projectId}/roadmap`);
-        if (fresh.ok) {
-          const data = await fresh.json();
-          setItems(data.items);
+      try {
+        const res = await apiFetch(`/api/projects/${projectId}/roadmap/move`, {
+          method: "POST",
+          body: JSON.stringify({
+            item_id: itemId,
+            to_horizon: toHorizon,
+            to_position: toPosition,
+          }),
+        });
+        if (!res.ok) {
+          toast.error(
+            "Déplacement impossible",
+            (await res.text()) || `Erreur ${res.status}`,
+          );
+          // Refetch to revert
+          const fresh = await apiFetch(`/api/projects/${projectId}/roadmap`);
+          if (fresh.ok) {
+            const data = await fresh.json();
+            setItems(data.items);
+          }
         }
+      } catch (err) {
+        toast.error(
+          "Déplacement impossible",
+          err instanceof Error ? err.message : String(err),
+        );
       }
     },
-    [items, projectId],
+    [items, projectId, toast],
   );
 
   const stats = useMemo(() => {

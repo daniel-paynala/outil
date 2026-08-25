@@ -2,16 +2,21 @@
 
 import { useState, useTransition, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
-import { Plus, Trash2 } from "lucide-react";
+import { Plus, Trash2, MailPlus } from "lucide-react";
 import { apiFetch } from "@/lib/api/client";
+import { useToast } from "@/core/toast/toast-context";
+import Avatar from "@/core/ui/avatar";
 
 export type AdminUser = {
   id: string;
   email: string;
   name: string | null;
+  avatar_url?: string | null;
   role: "member" | "admin";
   created_at: string | null;
   projects_count: number;
+  invitation_pending?: boolean;
+  last_sign_in_at?: string | null;
 };
 
 type Draft = { name: string; role: "member" | "admin" };
@@ -24,11 +29,12 @@ export default function UsersTable({
   currentUserId: string;
 }) {
   const router = useRouter();
+  const toast = useToast();
   const [pending, startTransition] = useTransition();
   const [drafts, setDrafts] = useState<Record<string, Draft>>({});
   const [savingId, setSavingId] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const [resendingId, setResendingId] = useState<string | null>(null);
   const [showAdd, setShowAdd] = useState(false);
 
   function getDraft(u: AdminUser): Draft {
@@ -49,7 +55,6 @@ export default function UsersTable({
   }
 
   async function save(u: AdminUser) {
-    setError(null);
     setSavingId(u.id);
     const d = getDraft(u);
     try {
@@ -66,17 +71,35 @@ export default function UsersTable({
         delete next[u.id];
         return next;
       });
+      toast.success("Utilisateur mis à jour", u.email);
       startTransition(() => router.refresh());
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Erreur inconnue");
+      toast.error("Modification impossible", e instanceof Error ? e.message : "Erreur inconnue");
     } finally {
       setSavingId(null);
     }
   }
 
+  async function resendInvite(u: AdminUser) {
+    setResendingId(u.id);
+    try {
+      const res = await apiFetch(`/api/admin/users/${u.id}/resend-invite`, {
+        method: "POST",
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error(body.error ?? `HTTP ${res.status}`);
+      }
+      toast.success("Invitation renvoyée", `Un nouvel email a été envoyé à ${u.email}`);
+    } catch (e) {
+      toast.error("Renvoi impossible", e instanceof Error ? e.message : "Erreur inconnue");
+    } finally {
+      setResendingId(null);
+    }
+  }
+
   async function remove(u: AdminUser) {
     if (!confirm(`Supprimer ${u.email} ? Cette action est définitive.`)) return;
-    setError(null);
     setDeletingId(u.id);
     try {
       const res = await apiFetch(`/api/admin/users/${u.id}`, { method: "DELETE" });
@@ -84,9 +107,10 @@ export default function UsersTable({
         const body = await res.json().catch(() => ({}));
         throw new Error(body.error ?? `HTTP ${res.status}`);
       }
+      toast.success("Utilisateur supprimé", u.email);
       startTransition(() => router.refresh());
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Erreur inconnue");
+      toast.error("Suppression impossible", e instanceof Error ? e.message : "Erreur inconnue");
     } finally {
       setDeletingId(null);
     }
@@ -103,12 +127,6 @@ export default function UsersTable({
           Ajouter
         </button>
       </div>
-
-      {error && (
-        <div className="rounded-md border border-[var(--color-danger)]/30 bg-[var(--color-danger)]/5 px-3 py-2 text-xs text-[var(--color-danger)]">
-          {error}
-        </div>
-      )}
 
       <div className="rounded-lg border border-[var(--border)] bg-[var(--surface)] overflow-hidden">
         <table className="w-full text-sm">
@@ -129,12 +147,24 @@ export default function UsersTable({
               return (
                 <tr key={u.id}>
                   <td className="px-4 py-2.5">
-                    <span className="font-mono text-xs">{u.email}</span>
-                    {isSelf && (
-                      <span className="ml-2 text-[10px] uppercase tracking-wider text-[var(--muted)]">
-                        toi
+                    <div className="flex items-center gap-2.5">
+                      <Avatar
+                        user={{
+                          email: u.email,
+                          name: u.name,
+                          avatar_url: u.avatar_url,
+                        }}
+                        size="sm"
+                      />
+                      <span className="font-mono text-xs truncate">
+                        {u.email}
                       </span>
-                    )}
+                      {isSelf && (
+                        <span className="text-[10px] uppercase tracking-wider text-[var(--muted)] shrink-0">
+                          toi
+                        </span>
+                      )}
+                    </div>
                   </td>
                   <td className="px-4 py-2.5">
                     <input
@@ -178,6 +208,18 @@ export default function UsersTable({
                         {savingId === u.id ? "..." : "Enregistrer"}
                       </button>
                       <button
+                        onClick={() => resendInvite(u)}
+                        disabled={resendingId === u.id || pending || u.invitation_pending === false}
+                        className="p-1.5 rounded-md text-[var(--muted)] hover:text-[var(--color-info)] hover:bg-[var(--color-info)]/10 disabled:opacity-20 disabled:cursor-not-allowed"
+                        title={
+                          u.invitation_pending === false
+                            ? "Compte deja active"
+                            : "Renvoyer l'invitation"
+                        }
+                      >
+                        <MailPlus className="w-4 h-4" />
+                      </button>
+                      <button
                         onClick={() => remove(u)}
                         disabled={isSelf || deletingId === u.id || pending}
                         className="p-1.5 rounded-md text-[var(--muted)] hover:text-[var(--color-danger)] hover:bg-[var(--color-danger)]/10 disabled:opacity-20 disabled:cursor-not-allowed"
@@ -197,10 +239,12 @@ export default function UsersTable({
       {showAdd && (
         <AddUserModal
           onClose={() => setShowAdd(false)}
-          onCreated={() => {
+          onCreated={(email) => {
             setShowAdd(false);
+            toast.success("Invitation envoyée", `Un email a été envoyé à ${email}`);
             startTransition(() => router.refresh());
           }}
+          onError={(msg) => toast.error("Invitation impossible", msg)}
         />
       )}
     </div>
@@ -210,9 +254,11 @@ export default function UsersTable({
 function AddUserModal({
   onClose,
   onCreated,
+  onError,
 }: {
   onClose: () => void;
-  onCreated: () => void;
+  onCreated: (email: string) => void;
+  onError: (msg: string) => void;
 }) {
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
@@ -224,10 +270,11 @@ function AddUserModal({
     e.preventDefault();
     setError(null);
     setSubmitting(true);
+    const cleanEmail = email.trim();
     try {
       const res = await apiFetch("/api/admin/users", {
         method: "POST",
-        body: JSON.stringify({ name: name.trim(), email: email.trim(), role }),
+        body: JSON.stringify({ name: name.trim(), email: cleanEmail, role }),
       });
       if (!res.ok) {
         const body = await res.json().catch(() => ({}));
@@ -240,9 +287,11 @@ function AddUserModal({
               : `HTTP ${res.status}`),
         );
       }
-      onCreated();
+      onCreated(cleanEmail);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Erreur inconnue");
+      const msg = err instanceof Error ? err.message : "Erreur inconnue";
+      setError(msg);
+      onError(msg);
     } finally {
       setSubmitting(false);
     }

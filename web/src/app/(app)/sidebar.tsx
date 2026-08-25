@@ -9,15 +9,15 @@ import {
   ListChecks,
   Archive,
   Search,
-  Code2,
-  CalendarClock,
   Bell,
   LogOut,
   Shield,
+  ScrollText,
   type LucideIcon,
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { clsx } from "clsx";
+import Avatar from "@/core/ui/avatar";
 
 type NavItem = {
   href: string;
@@ -32,23 +32,29 @@ const NAV: NavItem[] = [
   { href: "/my-tasks", label: "Mes tâches", icon: ListChecks },
   { href: "/archive", label: "Archive", icon: Archive },
   { href: "/search", label: "Recherche", icon: Search },
-  { href: "/snippets", label: "Snippets", icon: Code2, disabled: true },
-  { href: "/agenda", label: "Agenda", icon: CalendarClock, disabled: true },
-  { href: "/notifications", label: "Notifications", icon: Bell, disabled: true },
+  { href: "/notifications", label: "Notifications", icon: Bell },
 ];
 
 export default function Sidebar({
   email,
   isAdmin = false,
+  avatarUrl = null,
+  name = null,
 }: {
   email: string;
   isAdmin?: boolean;
+  avatarUrl?: string | null;
+  name?: string | null;
 }) {
   const pathname = usePathname();
   const router = useRouter();
   const supabase = createClient();
   const nav: NavItem[] = isAdmin
-    ? [...NAV, { href: "/admin/users", label: "Admin", icon: Shield }]
+    ? [
+        ...NAV,
+        { href: "/admin/users", label: "Utilisateurs", icon: Shield },
+        { href: "/admin/audit", label: "Journal d'audit", icon: ScrollText },
+      ]
     : NAV;
 
   async function handleLogout() {
@@ -58,7 +64,7 @@ export default function Sidebar({
   }
 
   return (
-    <aside className="w-60 shrink-0 border-r border-[var(--border)] bg-[var(--surface)] flex flex-col sticky top-0 h-screen">
+    <aside className="fixed left-0 top-0 z-30 w-60 border-r border-[var(--border)] bg-[var(--surface)] flex flex-col h-screen overflow-y-auto">
       <div className="px-5 py-5 flex items-center gap-2.5 border-b border-[var(--border)]">
         <Image
           src="/paynala-icon.png"
@@ -111,12 +117,20 @@ export default function Sidebar({
 
       <div className="border-t border-[var(--border)] p-3">
         <div className="flex items-center gap-2.5 px-2 py-2 rounded-md">
-          <div className="size-7 rounded-full bg-[var(--color-brand-red)] text-white flex items-center justify-center text-xs font-medium">
-            {email.charAt(0).toUpperCase()}
-          </div>
-          <div className="flex-1 min-w-0">
+          <Link
+            href="/account"
+            title="Mon compte"
+            className="hover:opacity-90"
+          >
+            <Avatar user={{ email, name, avatar_url: avatarUrl }} size="md" />
+          </Link>
+          <Link
+            href="/account"
+            className="flex-1 min-w-0 hover:underline"
+            title="Mon compte"
+          >
             <p className="text-xs truncate">{email}</p>
-          </div>
+          </Link>
           <button
             onClick={handleLogout}
             title="Se déconnecter"

@@ -4,35 +4,56 @@ namespace App\Modules\Core\Http\Controllers;
 
 use App\Http\Controllers\Controller;
 use App\Mail\UserInvitation;
+use App\Models\InvitationToken;
 use App\Models\User;
+use App\Modules\Activity\Services\ActivityLogger;
 use App\Modules\Core\Services\SupabaseAdminClient;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
+use Illuminate\Support\Str;
 use RuntimeException;
 
 class AdminUserController extends Controller
 {
-    public function index(): JsonResponse
+    public function __construct(private ActivityLogger $activity) {}
+
+    public function index(SupabaseAdminClient $supabase): JsonResponse
     {
         $projectCounts = DB::table('project_members')
             ->select('user_id', DB::raw('count(*) as count'))
             ->groupBy('user_id')
             ->pluck('count', 'user_id');
 
+        // Statut Supabase pour savoir si l'invitation est encore en attente
+        $supabaseByEmail = [];
+        try {
+            $supabaseByEmail = $supabase->listUsersByEmail();
+        } catch (\Throwable $e) {
+            Log::warning('Could not fetch Supabase users for invitation status', [
+                'error' => $e->getMessage(),
+            ]);
+        }
+
         $users = User::query()
             ->orderBy('email')
-            ->get(['id', 'email', 'name', 'role', 'created_at'])
-            ->map(function (User $u) use ($projectCounts) {
+            ->get(['id', 'email', 'name', 'role', 'avatar_path', 'created_at'])
+            ->map(function (User $u) use ($projectCounts, $supabaseByEmail) {
+                $sb = $supabaseByEmail[strtolower($u->email)] ?? null;
+                $invitationPending = $sb === null || empty($sb['email_confirmed_at']);
+
                 return [
                     'id' => $u->id,
                     'email' => $u->email,
                     'name' => $u->name,
                     'role' => $u->role,
+                    'avatar_url' => $u->avatar_url,
                     'created_at' => $u->created_at?->toIso8601String(),
                     'projects_count' => (int) ($projectCounts[$u->id] ?? 0),
+                    'invitation_pending' => $invitationPending,
+                    'last_sign_in_at' => $sb['last_sign_in_at'] ?? null,
                 ];
             });
 
@@ -55,14 +76,11 @@ class AdminUserController extends Controller
             ], 422);
         }
 
-        $redirectTo = rtrim((string) config('app.url'), '/').'/account/setup';
-
+        // 1) Crée l'utilisateur côté Supabase (sans password, email confirmé)
         try {
-            $invite = $supabase->generateInviteLink($email, $redirectTo, [
-                'name' => $data['name'],
-            ]);
+            $supabaseUser = $supabase->createUser($email, ['name' => $data['name']]);
         } catch (RuntimeException $e) {
-            Log::error('Supabase invite failed', [
+            Log::error('Supabase create user failed', [
                 'email' => $email,
                 'error' => $e->getMessage(),
             ]);
@@ -72,26 +90,24 @@ class AdminUserController extends Controller
             ], 502);
         }
 
+        // 2) Crée le row local avec le même UUID
         $user = User::create([
-            'id' => $invite['user_id'],
+            'id' => $supabaseUser['id'],
             'email' => $email,
             'name' => $data['name'],
             'role' => $data['role'],
         ]);
 
-        try {
-            Mail::to($email)->send(new UserInvitation(
-                name: $data['name'],
-                actionLink: $invite['action_link'],
-                inviterName: $request->attributes->get('user')?->name,
-            ));
-        } catch (\Throwable $e) {
-            Log::error('Invitation email failed', [
-                'email' => $email,
-                'error' => $e->getMessage(),
-            ]);
-            // On ne rollback pas — l'utilisateur existe, l'admin peut renvoyer l'invitation.
-        }
+        // 3) Génère un token d'invitation custom + envoie notre email
+        $this->createTokenAndSendEmail($user, $request->attributes->get('user')?->name);
+
+        $this->activity->logGlobal(
+            $request->attributes->get('supabase_user_id'),
+            'admin.user.invited',
+            $user,
+            $user->email,
+            ['role' => $user->role],
+        );
 
         return response()->json([
             'id' => $user->id,
@@ -100,7 +116,57 @@ class AdminUserController extends Controller
             'role' => $user->role,
             'created_at' => $user->created_at?->toIso8601String(),
             'projects_count' => 0,
+            'invitation_pending' => true,
         ], 201);
+    }
+
+    /**
+     * Génère un nouveau token d'invitation et envoie l'email.
+     * Invalide les tokens en cours pour cet user.
+     */
+    private function createTokenAndSendEmail(User $user, ?string $inviterName): void
+    {
+        InvitationToken::where('user_id', $user->id)
+            ->whereNull('used_at')
+            ->update(['used_at' => now()]);
+
+        $token = InvitationToken::create([
+            'user_id' => $user->id,
+            'token' => (string) Str::uuid(),
+            'expires_at' => now()->addHours(48),
+        ]);
+
+        $actionLink = rtrim((string) config('app.url'), '/').'/invite/'.$token->token;
+
+        try {
+            Mail::to($user->email)->send(new UserInvitation(
+                name: $user->name ?? $user->email,
+                actionLink: $actionLink,
+                inviterName: $inviterName,
+            ));
+        } catch (\Throwable $e) {
+            Log::error('Invitation email failed', [
+                'email' => $user->email,
+                'error' => $e->getMessage(),
+            ]);
+        }
+    }
+
+    public function resendInvite(Request $request, User $user): JsonResponse
+    {
+        $this->createTokenAndSendEmail($user, $request->attributes->get('user')?->name);
+
+        $this->activity->logGlobal(
+            $request->attributes->get('supabase_user_id'),
+            'admin.user.invitation_resent',
+            $user,
+            $user->email,
+        );
+
+        return response()->json([
+            'message' => 'Invitation renvoyée.',
+            'email' => $user->email,
+        ]);
     }
 
     public function update(Request $request, User $user): JsonResponse
@@ -121,7 +187,19 @@ class AdminUserController extends Controller
             ], 422);
         }
 
+        $changes = collect($data)->filter(fn ($v, $k) => $user->getOriginal($k) !== $v)->all();
+
         $user->update($data);
+
+        if (! empty($changes)) {
+            $this->activity->logGlobal(
+                $currentUserId,
+                'admin.user.updated',
+                $user,
+                $user->email,
+                ['changes' => $changes],
+            );
+        }
 
         return response()->json($user->only(['id', 'email', 'name', 'role']));
     }
@@ -134,6 +212,8 @@ class AdminUserController extends Controller
                 'error' => 'Tu ne peux pas te supprimer toi-même.',
             ], 422);
         }
+
+        $deletedEmail = $user->email;
 
         try {
             $supabase->deleteUser($user->id);
@@ -149,6 +229,13 @@ class AdminUserController extends Controller
         }
 
         $user->delete();
+
+        $this->activity->logGlobal(
+            $currentUserId,
+            'admin.user.deleted',
+            null,
+            $deletedEmail,
+        );
 
         return response()->json(null, 204);
     }

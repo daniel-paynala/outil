@@ -52,6 +52,108 @@ class SupabaseAdminClient
         ];
     }
 
+    /**
+     * Generate a magic link for an existing user.
+     * Used to resend an invitation : the user clicks, gets a session, can set a password.
+     */
+    public function generateMagicLink(string $email, string $redirectTo): array
+    {
+        $res = $this->client()->post("{$this->url}/auth/v1/admin/generate_link", [
+            'type' => 'magiclink',
+            'email' => $email,
+            'redirect_to' => $redirectTo,
+        ]);
+
+        if (! $res->successful()) {
+            $body = $res->json() ?? [];
+            $msg = $body['msg'] ?? $body['message'] ?? $body['error_description'] ?? $res->body();
+            throw new RuntimeException("Supabase admin generate_link (magiclink) failed: {$msg}", $res->status());
+        }
+
+        $json = $res->json();
+        $userId = $json['id'] ?? $json['user']['id'] ?? null;
+
+        return [
+            'user_id' => $userId ?? throw new RuntimeException('Missing user id in Supabase response'),
+            'action_link' => $json['action_link'] ?? throw new RuntimeException('Missing action_link in Supabase response'),
+        ];
+    }
+
+    /**
+     * List all auth users (paginated). Returns map: email -> user object from Supabase.
+     * Used to enrich the admin user list with confirmation status.
+     *
+     * @return array<string, array{email_confirmed_at: ?string, last_sign_in_at: ?string}>
+     */
+    public function listUsersByEmail(int $perPage = 200): array
+    {
+        $res = $this->client()->get("{$this->url}/auth/v1/admin/users", [
+            'per_page' => $perPage,
+        ]);
+
+        if (! $res->successful()) {
+            return [];
+        }
+
+        $users = $res->json('users') ?? [];
+        $byEmail = [];
+        foreach ($users as $u) {
+            if (! empty($u['email'])) {
+                $byEmail[strtolower($u['email'])] = [
+                    'email_confirmed_at' => $u['email_confirmed_at'] ?? null,
+                    'last_sign_in_at' => $u['last_sign_in_at'] ?? null,
+                ];
+            }
+        }
+
+        return $byEmail;
+    }
+
+    /**
+     * Create an auth user without sending email and without password.
+     * email_confirm=true so the user is immediately considered confirmed
+     * (we control the activation via our own invitation token).
+     *
+     * @return array{id: string, email: string}
+     */
+    public function createUser(string $email, array $userMetadata = []): array
+    {
+        $res = $this->client()->post("{$this->url}/auth/v1/admin/users", [
+            'email' => $email,
+            'email_confirm' => true,
+            'user_metadata' => $userMetadata,
+        ]);
+
+        if (! $res->successful()) {
+            $body = $res->json() ?? [];
+            $msg = $body['msg'] ?? $body['message'] ?? $body['error_description'] ?? $res->body();
+            throw new RuntimeException("Supabase admin create user failed: {$msg}", $res->status());
+        }
+
+        $json = $res->json();
+
+        return [
+            'id' => $json['id'] ?? throw new RuntimeException('Missing user id'),
+            'email' => $json['email'] ?? $email,
+        ];
+    }
+
+    /**
+     * Set or change the password of an existing auth user.
+     */
+    public function setUserPassword(string $userId, string $password): void
+    {
+        $res = $this->client()->put("{$this->url}/auth/v1/admin/users/{$userId}", [
+            'password' => $password,
+        ]);
+
+        if (! $res->successful()) {
+            $body = $res->json() ?? [];
+            $msg = $body['msg'] ?? $body['message'] ?? $res->body();
+            throw new RuntimeException("Supabase admin set password failed: {$msg}", $res->status());
+        }
+    }
+
     public function deleteUser(string $userId): void
     {
         $res = $this->client()->delete("{$this->url}/auth/v1/admin/users/{$userId}");
