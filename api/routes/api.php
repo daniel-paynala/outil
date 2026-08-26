@@ -8,6 +8,7 @@ use App\Modules\Core\Http\Controllers\UserDirectoryController;
 use App\Modules\Docs\Http\Controllers\DocController;
 use App\Modules\Files\Http\Controllers\ProjectFileController;
 use App\Modules\Github\Http\Controllers\GithubController;
+use App\Modules\Monitoring\Http\Controllers\QueueHealthController;
 use App\Modules\Messagerie\Http\Controllers\ConversationController;
 use App\Modules\Messagerie\Http\Controllers\MessageController;
 use App\Modules\Roadmap\Http\Controllers\RoadmapController;
@@ -28,6 +29,11 @@ Route::get('/health', function () {
         'time' => now()->toIso8601String(),
     ]);
 });
+
+// Sonde de la file d'attente, volontairement hors authentification : elle ne
+// divulgue que des compteurs, et doit rester consultable quand c'est
+// justement l'authentification qui est en panne.
+Route::get('/monitoring/queue', [QueueHealthController::class, 'show']);
 
 Route::middleware('supabase.auth')->group(function () {
     Route::get('/me', function (Request $request) {
