@@ -3,6 +3,7 @@
 namespace App\Modules\Messagerie\Http\Controllers;
 
 use App\Http\Controllers\Controller;
+use App\Modules\Messagerie\Jobs\SendMessagePush;
 use App\Modules\Messagerie\Models\Conversation;
 use App\Modules\Messagerie\Models\ConversationMember;
 use App\Modules\Messagerie\Models\Message;
@@ -139,6 +140,12 @@ class MessageController extends Controller
 
             return $message;
         });
+
+        // Mis en file, pas exécuté ici : l'appel à OneSignal coûte un
+        // aller-retour réseau qui s'ajouterait à la latence de l'envoi —
+        // celle qu'on cherche justement à contenir. Le worker s'en charge
+        // après la réponse.
+        SendMessagePush::dispatch($message->id);
 
         $message->load([
             'author:id,email,name,avatar_path',
