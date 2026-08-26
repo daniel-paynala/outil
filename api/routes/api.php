@@ -11,9 +11,11 @@ use App\Modules\Files\Http\Controllers\ProjectFileController;
 use App\Modules\Github\Http\Controllers\GithubController;
 use App\Modules\Messagerie\Http\Controllers\ConversationController;
 use App\Modules\Messagerie\Http\Controllers\MessageController;
+use App\Modules\Monitoring\Http\Controllers\IntegrityController;
 use App\Modules\Monitoring\Http\Controllers\PushHealthController;
 use App\Modules\Monitoring\Http\Controllers\QueueHealthController;
 use App\Modules\Monitoring\Http\Controllers\SearchHealthController;
+use App\Modules\Monitoring\Http\Controllers\ServerErrorsController;
 use App\Modules\Roadmap\Http\Controllers\RoadmapController;
 use App\Modules\Search\Http\Controllers\SearchController;
 use App\Modules\Tasks\Http\Controllers\BoardController;
@@ -39,6 +41,21 @@ Route::get('/health', function () {
 Route::get('/monitoring/queue', [QueueHealthController::class, 'show']);
 Route::get('/monitoring/search', [SearchHealthController::class, 'show']);
 Route::get('/monitoring/push', [PushHealthController::class, 'show']);
+
+// Intégrité de l'installation : versions, configuration, schéma, stockage.
+// Authentifiée — elle nomme des adresses de services et l'état du disque, qui
+// n'ont pas à circuler librement.
+Route::middleware('supabase.auth')->get(
+    '/monitoring/integrity',
+    [IntegrityController::class, 'show'],
+);
+
+// Erreurs du serveur. Réservée aux administrateurs : même expurgé, un journal
+// applicatif reste la chose la plus indiscrète d'une installation.
+Route::middleware(['supabase.auth', 'admin'])->get(
+    '/monitoring/errors',
+    [ServerErrorsController::class, 'show'],
+);
 
 Route::middleware('supabase.auth')->group(function () {
     Route::get('/me', function (Request $request) {
