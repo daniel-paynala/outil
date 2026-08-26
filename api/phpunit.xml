@@ -1,33 +1,56 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<phpunit xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-         xsi:noNamespaceSchemaLocation="vendor/phpunit/phpunit/phpunit.xsd"
-         bootstrap="vendor/autoload.php"
-         colors="true"
->
-    <testsuites>
-        <testsuite name="Unit">
-            <directory>tests/Unit</directory>
-        </testsuite>
-        <testsuite name="Feature">
-            <directory>tests/Feature</directory>
-        </testsuite>
-    </testsuites>
-    <source>
-        <include>
-            <directory>app</directory>
-        </include>
-    </source>
-    <php>
-        <env name="APP_ENV" value="testing"/>
-        <env name="APP_MAINTENANCE_DRIVER" value="file"/>
-        <env name="BCRYPT_ROUNDS" value="4"/>
-        <env name="CACHE_STORE" value="array"/>
-        <!-- <env name="DB_CONNECTION" value="sqlite"/> -->
-        <!-- <env name="DB_DATABASE" value=":memory:"/> -->
-        <env name="MAIL_MAILER" value="array"/>
-        <env name="PULSE_ENABLED" value="false"/>
-        <env name="QUEUE_CONNECTION" value="sync"/>
-        <env name="SESSION_DRIVER" value="array"/>
-        <env name="TELESCOPE_ENABLED" value="false"/>
-    </php>
+<phpunit xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="vendor/phpunit/phpunit/phpunit.xsd" bootstrap="vendor/autoload.php" colors="true">
+  <testsuites>
+    <testsuite name="Unit">
+      <directory>tests/Unit</directory>
+    </testsuite>
+    <testsuite name="Feature">
+      <directory>tests/Feature</directory>
+    </testsuite>
+  </testsuites>
+  <!-- `restrictDeprecations` limite le rapport aux dépréciations issues des
+         fichiers listés ci-dessous. Sans lui, une seule dépréciation du
+         squelette Laravel — `PDO::MYSQL_ATTR_SSL_CA`, obsolète depuis PHP 8.5,
+         mentionnée dans un fichier de configuration du framework qu'on ne peut
+         pas modifier — marquait chacun des tests, ce qui masquait entièrement
+         le résultat réel de la suite. Une alerte qui se déclenche toujours
+         cesse d'être une alerte. -->
+  <source restrictNotices="true" restrictWarnings="true" ignoreIndirectDeprecations="true">
+    <include>
+      <directory>app</directory>
+      <directory>routes</directory>
+      <directory>database/migrations</directory>
+    </include>
+  </source>
+  <php>
+    <env name="APP_ENV" value="testing"/>
+    <env name="APP_MAINTENANCE_DRIVER" value="file"/>
+    <env name="BCRYPT_ROUNDS" value="4"/>
+    <env name="CACHE_STORE" value="array"/>
+    <!-- Base de test : SQLite en mémoire.
+
+             Ni Docker ni serveur Postgres ne sont installés sur les postes de
+             l'équipe, et pointer les tests vers Supabase serait dangereux
+             autant que lent — `RefreshDatabase` y viderait la production, et
+             chaque requête coûte 160 ms depuis Libreville.
+
+             LIMITE CONNUE, à ne pas oublier : SQLite ne reproduit pas les
+             comportements propres à Postgres. Le bug de liaison des booléens
+             qui a cassé la création de projet en production ne se rejouerait
+             pas ici. Les tests couvrent donc les routes, les autorisations, la
+             validation et la logique métier — pas le dialecte SQL. -->
+    <env name="DB_CONNECTION" value="sqlite"/>
+    <env name="DB_DATABASE" value=":memory:"/>
+    <!-- Secret de signature des jetons de test. Sans valeur réelle :
+             les tests forgent leurs propres jetons pour exercer le middleware
+             d'authentification tel quel, plutôt que de le court-circuiter —
+             c'est précisément la couche où une régression serait invisible. -->
+    <env name="SUPABASE_JWT_SECRET" value="secret-de-test-uniquement-non-utilise-en-production"/>
+    <env name="SUPABASE_URL" value="https://exemple.supabase.test"/>
+    <env name="MAIL_MAILER" value="array"/>
+    <env name="PULSE_ENABLED" value="false"/>
+    <env name="QUEUE_CONNECTION" value="sync"/>
+    <env name="SESSION_DRIVER" value="array"/>
+    <env name="TELESCOPE_ENABLED" value="false"/>
+  </php>
 </phpunit>

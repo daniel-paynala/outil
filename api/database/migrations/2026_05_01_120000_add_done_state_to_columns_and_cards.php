@@ -18,21 +18,41 @@ return new class extends Migration
             $table->index('completed_at');
         });
 
-        // Backfill : colonnes "Terminé"/"Done"/"Livré" existantes → is_done=true,
-        // puis marquer les cartes qui s'y trouvent comme terminées (completed_at = updated_at).
-        DB::statement(<<<'SQL'
+        $this->backfill();
+    }
+
+    /**
+     * Reprise des données existantes : colonnes « Terminé »/« Done »/« Livré »
+     * → `is_done`, puis les cartes qui s'y trouvent → `completed_at`.
+     *
+     * `ILIKE` n'existe qu'en PostgreSQL. Ce n'était pas un problème tant que
+     * les migrations ne tournaient que contre Supabase — ça l'est devenu quand
+     * la suite de tests a commencé à monter le schéma sur SQLite : la migration
+     * échouait, et aucun test ne pouvait démarrer.
+     *
+     * On garde `ILIKE` là où il existe, plutôt que d'aligner tout le monde sur
+     * `LIKE` : en PostgreSQL, `LIKE` est sensible à la casse, et « Terminé »
+     * cesserait d'être reconnu sur les vraies données. La reprise elle-même est
+     * sans objet sur une base neuve — il n'y a rien à reprendre — mais elle
+     * doit rester exacte là où elle sert.
+     */
+    private function backfill(): void
+    {
+        $like = DB::connection()->getDriverName() === 'pgsql' ? 'ILIKE' : 'LIKE';
+
+        DB::statement(<<<SQL
             UPDATE columns
             SET is_done = TRUE
-            WHERE name ILIKE 'terminé%'
-               OR name ILIKE 'termine%'
-               OR name ILIKE 'done%'
-               OR name ILIKE 'livré%'
-               OR name ILIKE 'closed%'
+            WHERE name {$like} 'terminé%'
+               OR name {$like} 'termine%'
+               OR name {$like} 'done%'
+               OR name {$like} 'livré%'
+               OR name {$like} 'closed%'
         SQL);
 
         DB::statement(<<<'SQL'
             UPDATE cards
-            SET completed_at = COALESCE(updated_at, NOW())
+            SET completed_at = COALESCE(updated_at, CURRENT_TIMESTAMP)
             WHERE completed_at IS NULL
               AND column_id IN (SELECT id FROM columns WHERE is_done = TRUE)
         SQL);
