@@ -71,8 +71,8 @@ class DocController extends Controller
         $this->ensureMember($request, $page->project);
 
         $page->load([
-            'creator:id,email,name',
-            'updater:id,email,name',
+            'creator:id,email,name,avatar_path',
+            'updater:id,email,name,avatar_path',
         ]);
 
         return response()->json($page);
@@ -129,7 +129,7 @@ class DocController extends Controller
 
         $this->activity->log($page->project_id, $userId, 'doc.updated', $page, $page->title);
 
-        $page->load(['updater:id,email,name']);
+        $page->load(['updater:id,email,name,avatar_path']);
 
         return response()->json($page);
     }
@@ -151,7 +151,7 @@ class DocController extends Controller
         $this->ensureMember($request, $page->project);
 
         $revs = $page->revisions()
-            ->with('creator:id,email,name')
+            ->with('creator:id,email,name,avatar_path')
             ->select(['id', 'page_id', 'title', 'created_by', 'created_at'])
             ->get();
 
@@ -163,7 +163,7 @@ class DocController extends Controller
         $page = DocPage::findOrFail($revision->page_id);
         $this->ensureMember($request, $page->project);
 
-        $revision->load('creator:id,email,name');
+        $revision->load('creator:id,email,name,avatar_path');
 
         return response()->json($revision);
     }
@@ -196,7 +196,7 @@ class DocController extends Controller
             'revision_id' => $revision->id,
         ]);
 
-        return response()->json($page->fresh(['updater:id,email,name']));
+        return response()->json($page->fresh(['updater:id,email,name,avatar_path']));
     }
 
     private function userId(Request $request): string

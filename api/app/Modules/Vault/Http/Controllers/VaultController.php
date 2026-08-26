@@ -21,7 +21,7 @@ class VaultController extends Controller
         $this->ensureMember($request, $project);
 
         $entries = VaultEntry::where('project_id', $project->id)
-            ->with('updater:id,email,name', 'creator:id,email,name')
+            ->with('updater:id,email,name,avatar_path', 'creator:id,email,name,avatar_path')
             ->orderBy('name')
             ->get();
 
@@ -64,7 +64,7 @@ class VaultController extends Controller
     {
         $this->ensureMember($request, $entry->project);
 
-        $entry->load('creator:id,email,name', 'updater:id,email,name');
+        $entry->load('creator:id,email,name,avatar_path', 'updater:id,email,name,avatar_path');
         $this->log($entry->id, $this->userId($request), 'viewed', $request);
 
         return response()->json($entry);
@@ -130,7 +130,7 @@ class VaultController extends Controller
         $this->ensureMember($request, $entry->project);
 
         $logs = $entry->accessLogs()
-            ->with('user:id,email,name')
+            ->with('user:id,email,name,avatar_path')
             ->limit(200)
             ->get();
 

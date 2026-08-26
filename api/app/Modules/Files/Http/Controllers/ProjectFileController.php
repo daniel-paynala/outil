@@ -23,7 +23,7 @@ class ProjectFileController extends Controller
         $this->ensureMember($request, $project);
 
         $files = ProjectFile::where('project_id', $project->id)
-            ->with('uploader:id,email,name')
+            ->with('uploader:id,email,name,avatar_path')
             ->orderByDesc('created_at')
             ->get();
 
@@ -58,7 +58,7 @@ class ProjectFileController extends Controller
             'uploaded_by' => $userId,
         ]);
 
-        $record->load('uploader:id,email,name');
+        $record->load('uploader:id,email,name,avatar_path');
 
         $this->activity->log($project->id, $userId, 'file.uploaded', $record, $record->name, [
             'size' => $record->size_bytes,

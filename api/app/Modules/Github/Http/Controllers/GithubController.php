@@ -23,7 +23,7 @@ class GithubController extends Controller
         $this->ensureMember($request, $project);
 
         $repos = GithubRepo::where('project_id', $project->id)
-            ->with('linker:id,email,name')
+            ->with('linker:id,email,name,avatar_path')
             ->withCount('commits')
             ->orderBy('platform')
             ->orderBy('full_name')
@@ -89,7 +89,7 @@ class GithubController extends Controller
             // Initial sync failure shouldn't block the link — user can retry.
         }
 
-        $repo->load('linker:id,email,name');
+        $repo->load('linker:id,email,name,avatar_path');
         $repo->loadCount('commits');
 
         return response()->json($repo, 201);
@@ -107,7 +107,7 @@ class GithubController extends Controller
         ]);
 
         $repo->update($data);
-        $repo->load('linker:id,email,name');
+        $repo->load('linker:id,email,name,avatar_path');
         $repo->loadCount('commits');
 
         return response()->json($repo);

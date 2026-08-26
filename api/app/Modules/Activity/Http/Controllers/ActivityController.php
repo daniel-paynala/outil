@@ -20,7 +20,7 @@ class ActivityController extends Controller
         }
 
         $query = ActivityLog::where('project_id', $project->id)
-            ->with('actor:id,email,name')
+            ->with('actor:id,email,name,avatar_path')
             ->orderByDesc('created_at')
             ->limit(500);
 

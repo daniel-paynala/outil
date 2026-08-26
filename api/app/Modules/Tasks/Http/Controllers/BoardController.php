@@ -27,7 +27,7 @@ class BoardController extends Controller
             ->with([
                 'cards' => fn ($q) => $q->orderBy('position'),
                 'cards.labels:id,name,color',
-                'cards.assignee:id,email,name',
+                'cards.assignee:id,email,name,avatar_path',
             ])
             ->withCount(['cards'])
             ->orderBy('position')
@@ -47,10 +47,10 @@ class BoardController extends Controller
 
         $card->load([
             'labels:id,name,color',
-            'assignee:id,email,name',
-            'creator:id,email,name',
+            'assignee:id,email,name,avatar_path',
+            'creator:id,email,name,avatar_path',
             'children:id,title,column_id,position,priority,due_date,assigned_to',
-            'children.assignee:id,email,name',
+            'children.assignee:id,email,name,avatar_path',
             'dependencies:id,title,column_id',
             'dependents:id,title,column_id',
             'parent:id,title',
@@ -177,7 +177,7 @@ class BoardController extends Controller
             );
         }
 
-        $card->load(['assignee:id,email,name', 'labels:id,name,color']);
+        $card->load(['assignee:id,email,name,avatar_path', 'labels:id,name,color']);
 
         return response()->json($card);
     }

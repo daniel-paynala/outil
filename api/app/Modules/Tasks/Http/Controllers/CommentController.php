@@ -19,7 +19,7 @@ class CommentController extends Controller
         $this->ensureMember($request, $card->project);
 
         $comments = $card->comments()
-            ->with('user:id,email,name')
+            ->with('user:id,email,name,avatar_path')
             ->get();
 
         return response()->json($comments);
@@ -41,7 +41,7 @@ class CommentController extends Controller
             'content' => $data['content'],
         ]);
 
-        $comment->load('user:id,email,name');
+        $comment->load('user:id,email,name,avatar_path');
 
         $this->activity->log(
             $card->project_id,
@@ -64,7 +64,7 @@ class CommentController extends Controller
         ]);
 
         $comment->update($data);
-        $comment->load('user:id,email,name');
+        $comment->load('user:id,email,name,avatar_path');
 
         return response()->json($comment);
     }

@@ -54,7 +54,7 @@ class MessageController extends Controller
                 // Une seule profondeur : sans cette limite, une chaîne de
                 // réponses chargerait tout le fil de proche en proche.
                 'replyTo:id,user_id,body,deleted_at',
-                'replyTo.author:id,email,name',
+                'replyTo.author:id,email,name,avatar_path',
             ])
             ->when($before, fn ($q) => $q->where('created_at', '<', $before))
             ->orderByDesc('created_at')
@@ -151,7 +151,7 @@ class MessageController extends Controller
             'author:id,email,name,avatar_path',
             'attachments',
             'replyTo:id,user_id,body,deleted_at',
-            'replyTo.author:id,email,name',
+            'replyTo.author:id,email,name,avatar_path',
         ]);
 
         return response()->json($message, 201);

@@ -2,6 +2,7 @@
 
 namespace App\Modules\Messagerie\Jobs;
 
+use App\Models\User;
 use App\Modules\Messagerie\Models\Conversation;
 use App\Modules\Messagerie\Models\Message;
 use App\Modules\Messagerie\Services\PushSender;
@@ -33,7 +34,7 @@ class SendMessagePush implements ShouldQueue
 
     public function handle(PushSender $push): void
     {
-        $message = Message::with(['author:id,email,name', 'attachments'])
+        $message = Message::with(['author:id,email,name,avatar_path', 'attachments'])
             ->find($this->messageId);
 
         // Le message a pu être supprimé entre l'envoi et le traitement.
@@ -46,10 +47,17 @@ class SendMessagePush implements ShouldQueue
             return;
         }
 
-        $recipients = $conversation->members
+        $others = $conversation->members
             ->pluck('user_id')
-            ->reject(fn ($id) => $id === $message->user_id)
-            ->values()
+            ->reject(fn ($id) => $id === $message->user_id);
+
+        // Le filtre est fait en base plutôt qu'en mémoire : la préférence
+        // peut avoir changé depuis que la conversation a été chargée, et une
+        // notification envoyée à quelqu'un qui l'a coupée est exactement le
+        // genre de détail qui décrédibilise un réglage.
+        $recipients = User::whereIn('id', $others)
+            ->where('notify_messages', true)
+            ->pluck('id')
             ->all();
 
         if (empty($recipients)) {

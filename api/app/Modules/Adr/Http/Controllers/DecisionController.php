@@ -20,7 +20,7 @@ class DecisionController extends Controller
         $this->ensureMember($request, $project);
 
         $decisions = Decision::where('project_id', $project->id)
-            ->with('creator:id,email,name', 'updater:id,email,name')
+            ->with('creator:id,email,name,avatar_path', 'updater:id,email,name,avatar_path')
             ->orderByDesc('number')
             ->get();
 
@@ -55,7 +55,7 @@ class DecisionController extends Controller
             'updated_by' => $userId,
         ]);
 
-        $decision->load('creator:id,email,name');
+        $decision->load('creator:id,email,name,avatar_path');
 
         $this->activity->log(
             $project->id,
@@ -72,7 +72,7 @@ class DecisionController extends Controller
     {
         $this->ensureMember($request, $decision->project);
 
-        $decision->load('creator:id,email,name', 'updater:id,email,name');
+        $decision->load('creator:id,email,name,avatar_path', 'updater:id,email,name,avatar_path');
 
         return response()->json($decision);
     }
@@ -110,7 +110,7 @@ class DecisionController extends Controller
             $statusChanged ? ['from' => $prevStatus, 'to' => $decision->status] : [],
         );
 
-        $decision->load('updater:id,email,name');
+        $decision->load('updater:id,email,name,avatar_path');
 
         return response()->json($decision);
     }

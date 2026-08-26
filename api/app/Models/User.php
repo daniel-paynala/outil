@@ -19,12 +19,28 @@ class User extends Model
         'name',
         'role',
         'metadata',
+        'notify_messages',
+        'notify_projects',
+        'notify_tasks',
+        'notify_task_assignment',
+    ];
+
+    /** Préférences de notification push et in-app, par catégorie. */
+    public const NOTIFICATION_PREFERENCES = [
+        'notify_messages',
+        'notify_projects',
+        'notify_tasks',
+        'notify_task_assignment',
     ];
 
     protected function casts(): array
     {
         return [
             'metadata' => 'array',
+            'notify_messages' => 'boolean',
+            'notify_projects' => 'boolean',
+            'notify_tasks' => 'boolean',
+            'notify_task_assignment' => 'boolean',
         ];
     }
 

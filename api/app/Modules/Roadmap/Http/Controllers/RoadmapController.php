@@ -27,7 +27,7 @@ class RoadmapController extends Controller
         $this->ensureMember($request, $project);
 
         $items = RoadmapItem::where('project_id', $project->id)
-            ->with(['owner:id,email,name', 'release:id,name,color,shipped_at'])
+            ->with(['owner:id,email,name,avatar_path', 'release:id,name,color,shipped_at'])
             ->withCount('cards')
             ->orderBy('horizon')
             ->orderBy('position')
@@ -77,7 +77,7 @@ class RoadmapController extends Controller
             'updated_by' => $userId,
         ]);
 
-        $item->load(['owner:id,email,name', 'release:id,name,color']);
+        $item->load(['owner:id,email,name,avatar_path', 'release:id,name,color']);
         $item->loadCount('cards');
 
         $this->activity->log($project->id, $userId, 'roadmap.created', $item, $item->title);
@@ -90,8 +90,8 @@ class RoadmapController extends Controller
         $this->ensureMember($request, $item->project);
 
         $item->load([
-            'owner:id,email,name',
-            'creator:id,email,name',
+            'owner:id,email,name,avatar_path',
+            'creator:id,email,name,avatar_path',
             'release:id,name,color,shipped_at',
             'cards:id,title,column_id,project_id',
         ]);
@@ -118,7 +118,7 @@ class RoadmapController extends Controller
         $userId = $this->userId($request);
         $item->update([...$data, 'updated_by' => $userId]);
 
-        $item->load(['owner:id,email,name', 'release:id,name,color']);
+        $item->load(['owner:id,email,name,avatar_path', 'release:id,name,color']);
         $item->loadCount('cards');
 
         $this->activity->log($item->project_id, $userId, 'roadmap.updated', $item, $item->title);

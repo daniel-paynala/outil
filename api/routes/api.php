@@ -3,6 +3,7 @@
 use App\Modules\Activity\Http\Controllers\ActivityController;
 use App\Modules\Adr\Http\Controllers\DecisionController;
 use App\Modules\Core\Http\Controllers\AdminUserController;
+use App\Modules\Core\Http\Controllers\PreferencesController;
 use App\Modules\Core\Http\Controllers\ProjectController;
 use App\Modules\Core\Http\Controllers\UserDirectoryController;
 use App\Modules\Docs\Http\Controllers\DocController;
@@ -49,6 +50,10 @@ Route::middleware('supabase.auth')->group(function () {
     // Annuaire de l'équipe — nécessaire pour désigner quelqu'un (discussion,
     // assignation). En lecture seule ; la gestion des comptes reste sous /admin.
     Route::get('users', [UserDirectoryController::class, 'index']);
+
+    // Préférences de notification, par catégorie.
+    Route::get('me/preferences', [PreferencesController::class, 'show']);
+    Route::patch('me/preferences', [PreferencesController::class, 'update']);
 
     Route::get('me/tasks', [MyTasksController::class, 'index']);
     Route::get('me/archive', [MyTasksController::class, 'archive']);

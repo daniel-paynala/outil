@@ -105,7 +105,7 @@ class ConversationController extends Controller
             ->selectRaw('distinct on (conversation_id) *')
             ->whereIn('conversation_id', $conversationIds)
             ->orderByRaw('conversation_id, created_at desc, id desc')
-            ->with(['author:id,email,name', 'attachments'])
+            ->with(['author:id,email,name,avatar_path', 'attachments'])
             ->get()
             ->keyBy('conversation_id')
             ->all();
@@ -196,7 +196,7 @@ class ConversationController extends Controller
 
         $conversation->load([
             'members.user:id,email,name,avatar_path',
-            'creator:id,email,name',
+            'creator:id,email,name,avatar_path',
         ]);
 
         return response()->json($conversation);

@@ -20,7 +20,7 @@ class TimeController extends Controller
 
         $entries = TimeEntry::where('project_id', $project->id)
             ->with([
-                'user:id,email,name',
+                'user:id,email,name,avatar_path',
                 'card:id,title,column_id',
             ])
             ->orderByDesc('started_at')
@@ -72,7 +72,7 @@ class TimeController extends Controller
             'started_at' => now(),
         ]);
 
-        $entry->load('user:id,email,name', 'card:id,title,column_id', 'project:id,name,slug,color');
+        $entry->load('user:id,email,name,avatar_path', 'card:id,title,column_id', 'project:id,name,slug,color');
 
         return response()->json($entry, 201);
     }
@@ -88,7 +88,7 @@ class TimeController extends Controller
         );
 
         $this->stopEntry($entry);
-        $entry->load('user:id,email,name', 'card:id,title,column_id');
+        $entry->load('user:id,email,name,avatar_path', 'card:id,title,column_id');
 
         $this->activity->log(
             $entry->project_id,
@@ -128,7 +128,7 @@ class TimeController extends Controller
             'seconds' => $data['seconds'],
         ]);
 
-        $entry->load('user:id,email,name', 'card:id,title,column_id');
+        $entry->load('user:id,email,name,avatar_path', 'card:id,title,column_id');
 
         $this->activity->log(
             $project->id,
@@ -157,7 +157,7 @@ class TimeController extends Controller
         }
 
         $entry->update($data);
-        $entry->load('user:id,email,name', 'card:id,title,column_id');
+        $entry->load('user:id,email,name,avatar_path', 'card:id,title,column_id');
 
         return response()->json($entry);
     }
