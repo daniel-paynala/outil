@@ -9,9 +9,11 @@ use App\Modules\Core\Http\Controllers\UserDirectoryController;
 use App\Modules\Docs\Http\Controllers\DocController;
 use App\Modules\Files\Http\Controllers\ProjectFileController;
 use App\Modules\Github\Http\Controllers\GithubController;
-use App\Modules\Monitoring\Http\Controllers\QueueHealthController;
 use App\Modules\Messagerie\Http\Controllers\ConversationController;
 use App\Modules\Messagerie\Http\Controllers\MessageController;
+use App\Modules\Monitoring\Http\Controllers\PushHealthController;
+use App\Modules\Monitoring\Http\Controllers\QueueHealthController;
+use App\Modules\Monitoring\Http\Controllers\SearchHealthController;
 use App\Modules\Roadmap\Http\Controllers\RoadmapController;
 use App\Modules\Search\Http\Controllers\SearchController;
 use App\Modules\Tasks\Http\Controllers\BoardController;
@@ -35,6 +37,8 @@ Route::get('/health', function () {
 // divulgue que des compteurs, et doit rester consultable quand c'est
 // justement l'authentification qui est en panne.
 Route::get('/monitoring/queue', [QueueHealthController::class, 'show']);
+Route::get('/monitoring/search', [SearchHealthController::class, 'show']);
+Route::get('/monitoring/push', [PushHealthController::class, 'show']);
 
 Route::middleware('supabase.auth')->group(function () {
     Route::get('/me', function (Request $request) {

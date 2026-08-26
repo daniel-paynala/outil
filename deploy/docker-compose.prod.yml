@@ -9,6 +9,29 @@
 # Le `docker-compose.yml` de la racine reste celui du développement local
 # (Redis et Meilisearch seuls). Celui-ci décrit la production.
 
+# Environnement commun aux trois conteneurs PHP — API, planificateur, worker.
+#
+# ## Pourquoi le cache doit être Redis
+#
+# Le middleware d'authentification garde un instantané court de chaque compte
+# pour éviter un aller-retour vers Supabase Francfort à *chaque* requête —
+# mesuré à 160 ms depuis Libreville, sur tous les écrans. Ce gain n'existe que
+# si le cache est local. Avec `CACHE_STORE=database`, la valeur par défaut de
+# Laravel, le cache *est* la base distante : l'instantané se relit au prix
+# exact de la ligne qu'il remplace, et l'opération devient neutre. Redis tourne
+# déjà ici, sur le même hôte, à quelques dixièmes de milliseconde.
+#
+# ## Pourquoi la valeur est partagée, et non posée sur l'API seule
+#
+# Le cache sert aussi de canal entre les conteneurs. Le worker y écrit l'heure
+# du dernier job traité et l'issue du dernier push ; l'API les relit pour
+# `/api/monitoring/queue` et `/api/monitoring/push`. Deux magasins différents
+# et les sondes ne verraient plus rien — elles annonceraient une file morte et
+# des notifications jamais parties, alors que tout fonctionne. Le pire des
+# diagnostics : un faux positif dans l'outil censé dire la vérité.
+x-php-env: &php-env
+  CACHE_STORE: redis
+
 services:
   api:
     build:
@@ -16,6 +39,7 @@ services:
     container_name: arche-api
     env_file:
       - ./api/.env
+    environment: *php-env
     volumes:
       - api-storage:/var/www/html/storage
       - api-public:/var/www/html/public
@@ -41,6 +65,7 @@ services:
     container_name: arche-scheduler
     env_file:
       - ./api/.env
+    environment: *php-env
     volumes:
       - api-storage:/var/www/html/storage
     command: ["php", "artisan", "schedule:work"]
@@ -68,6 +93,7 @@ services:
     container_name: arche-queue-worker
     env_file:
       - ./api/.env
+    environment: *php-env
     volumes:
       - api-storage:/var/www/html/storage
     command: ["php", "artisan", "queue:work", "redis", "--queue=default", "--tries=3", "--timeout=120", "--sleep=3", "--max-time=3600"]
@@ -92,6 +118,15 @@ services:
     networks:
       - arche
 
+  # Redis porte à la fois la file d'attente et, depuis l'ajout de
+  # `CACHE_STORE: redis`, le cache applicatif.
+  #
+  # ⚠ `allkeys-lru` évince n'importe quelle clé sous pression mémoire — y
+  # compris les listes de la file, donc des jobs jamais exécutés et sans trace.
+  # À cinq utilisateurs, 128 Mo ne seront jamais atteints (un instantané de
+  # compte pèse ~1 ko et vit 60 s), et le sujet est théorique. S'il devait le
+  # devenir, la réponse est `volatile-lru` — qui n'évince que les clés portant
+  # une expiration, c'est-à-dire le cache et jamais la file.
   redis:
     image: redis:7-alpine
     container_name: arche-redis
