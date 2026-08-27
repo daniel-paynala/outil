@@ -4,6 +4,7 @@ namespace App\Modules\Monitoring\Http\Controllers;
 
 use App\Http\Controllers\Controller;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Queue;
@@ -75,6 +76,33 @@ class QueueHealthController extends Controller
         }
 
         return 'ok';
+    }
+
+    /**
+     * Vide la liste des traitements en échec.
+     *
+     * Un échec ancien — celui d'une table qui n'existait pas encore, d'une
+     * configuration depuis corrigée — maintient la sonde en « dégradé » pour
+     * toujours. Une alerte qui ne s'éteint jamais cesse d'être lue, et masque
+     * la suivante.
+     *
+     * Rend le nombre effacé, pour qu'on sache ce qu'on vient de perdre.
+     */
+    public function flush(): JsonResponse
+    {
+        try {
+            $avant = DB::table('failed_jobs')->count();
+            Artisan::call('queue:flush');
+
+            return response()->json([
+                'cleared' => $avant,
+                'message' => $avant === 0
+                    ? 'Aucun échec à effacer.'
+                    : "{$avant} échec".($avant > 1 ? 's effacés' : ' effacé').'.',
+            ]);
+        } catch (Throwable $e) {
+            return response()->json(['message' => $e->getMessage()], 500);
+        }
     }
 
     /** Jobs en attente, quel que soit le pilote — Redis en prod, base en local. */

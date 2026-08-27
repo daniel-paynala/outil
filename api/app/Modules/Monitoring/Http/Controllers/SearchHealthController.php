@@ -6,10 +6,12 @@ use App\Http\Controllers\Controller;
 use App\Modules\Adr\Models\Decision;
 use App\Modules\Docs\Models\DocPage;
 use App\Modules\Files\Models\ProjectFile;
+use App\Modules\Monitoring\Jobs\ReindexModel;
 use App\Modules\Tasks\Models\Card;
 use App\Modules\Vault\Models\VaultEntry;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\DB;
 use Meilisearch\Client;
 use Throwable;
@@ -50,6 +52,82 @@ class SearchHealthController extends Controller
         VaultEntry::class => 'Coffre',
         ProjectFile::class => 'Fichiers',
     ];
+
+    /**
+     * Répare ce que la sonde signale.
+     *
+     * ## Pourquoi un point d'entrée plutôt qu'une commande
+     *
+     * Le diagnostic est exact depuis des jours — « réglages désynchronisés,
+     * lancer `scout:sync-index-settings` » — et la recherche reste cassée,
+     * parce que l'appliquer suppose un accès SSH au serveur et le bon nom de
+     * conteneur. Un diagnostic qu'on ne peut pas suivre d'un geste ne vaut pas
+     * beaucoup mieux qu'une panne muette.
+     *
+     * Les deux commandes sont figées dans le code : rien de ce que l'appelant
+     * envoie n'atteint le shell. Réservé aux administrateurs.
+     */
+    public function repair(): JsonResponse
+    {
+        if (config('scout.driver') !== 'meilisearch') {
+            return response()->json([
+                'message' => 'Scout ne tourne pas sur Meilisearch : rien à '
+                    .'synchroniser.',
+            ], 422);
+        }
+
+        // Les réglages d'abord, en direct : ce ne sont que quelques appels au
+        // moteur, et sans eux un index repeuplé resterait inutilisable.
+        try {
+            Artisan::call('scout:sync-index-settings');
+        } catch (Throwable $e) {
+            return response()->json([
+                'message' => 'Synchronisation des réglages refusée : '
+                    .$e->getMessage(),
+            ], 502);
+        }
+
+        // Puis les imports, en file : un index absent doit être repeuplé, et
+        // parcourir une table entière ne tient pas dans une requête HTTP.
+        $aReindexer = [];
+
+        foreach (self::MODELS as $class => $label) {
+            /** @var Model $model */
+            $model = new $class;
+
+            try {
+                $client = new Client(
+                    config('scout.meilisearch.host'),
+                    config('scout.meilisearch.key'),
+                );
+                $stats = $client->stats();
+                $uid = config('scout.prefix').$model->searchableAs();
+
+                // Absent, ou vide alors que la base ne l'est pas : les deux
+                // demandent un import complet.
+                $documents = $stats['indexes'][$uid]['numberOfDocuments'] ?? null;
+                $lignes = DB::table($model->getTable())->count();
+
+                if ($documents === null || ($documents === 0 && $lignes > 0)) {
+                    ReindexModel::dispatch($class);
+                    $aReindexer[] = $label;
+                }
+            } catch (Throwable) {
+                // Un modèle qu'on n'arrive pas à jauger ne doit pas empêcher
+                // les autres d'être réparés.
+                continue;
+            }
+        }
+
+        return response()->json([
+            'settings_synced' => true,
+            'reindexing' => $aReindexer,
+            'message' => $aReindexer === []
+                ? 'Réglages synchronisés. Aucun index à repeupler.'
+                : 'Réglages synchronisés. Réindexation lancée en arrière-plan : '
+                    .implode(', ', $aReindexer).'.',
+        ]);
+    }
 
     public function show(): JsonResponse
     {

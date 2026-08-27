@@ -52,6 +52,14 @@ Route::middleware('supabase.auth')->get(
     [IntegrityController::class, 'show'],
 );
 
+// Réparations. Réservées aux administrateurs : elles exécutent des commandes
+// figées dans le code — rien de ce que l'appelant envoie n'atteint le shell —
+// mais elles modifient l'état du serveur.
+Route::middleware(['supabase.auth', 'admin'])->group(function () {
+    Route::post('/monitoring/search/repair', [SearchHealthController::class, 'repair']);
+    Route::post('/monitoring/queue/flush', [QueueHealthController::class, 'flush']);
+});
+
 // Erreurs du serveur. Réservée aux administrateurs : même expurgé, un journal
 // applicatif reste la chose la plus indiscrète d'une installation.
 Route::middleware(['supabase.auth', 'admin'])->get(

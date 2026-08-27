@@ -120,6 +120,43 @@ class MonitoringTest extends TestCase
         }
     }
 
+    // ── Réparations ─────────────────────────────────────────────────────
+
+    public function test_les_reparations_sont_reservees_aux_administrateurs(): void
+    {
+        // Elles modifient l'état du serveur : synchroniser des réglages,
+        // repeupler un index, effacer des échecs.
+        [$_, $entetes] = $this->authenticate(['role' => 'member']);
+
+        $this->postJson('/api/monitoring/search/repair', [], $entetes)
+            ->assertForbidden();
+        $this->postJson('/api/monitoring/queue/flush', [], $entetes)
+            ->assertForbidden();
+    }
+
+    public function test_reparer_la_recherche_hors_meilisearch_est_refuse(): void
+    {
+        // Scout en mode `collection` interroge la base : il n'y a aucun réglage
+        // à pousser, et prétendre avoir réparé serait mensonger.
+        config(['scout.driver' => 'collection']);
+
+        [$_, $entetes] = $this->authenticate(['role' => 'admin']);
+
+        $this->postJson('/api/monitoring/search/repair', [], $entetes)
+            ->assertStatus(422);
+    }
+
+    public function test_vider_les_echecs_rend_le_compte_efface(): void
+    {
+        // Savoir ce qu'on vient de perdre : un « c'est fait » sans chiffre
+        // laisse ignorer qu'on a effacé vingt échecs jamais lus.
+        [$_, $entetes] = $this->authenticate(['role' => 'admin']);
+
+        $this->postJson('/api/monitoring/queue/flush', [], $entetes)
+            ->assertOk()
+            ->assertJsonPath('cleared', 0);
+    }
+
     public function test_les_erreurs_serveur_sont_reservees_aux_administrateurs(): void
     {
         // Même expurgé, un journal applicatif reste la partie la plus
