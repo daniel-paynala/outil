@@ -24,6 +24,7 @@ class User extends Model
         'notify_projects',
         'notify_tasks',
         'notify_task_assignment',
+        'notify_mail',
     ];
 
     /** Préférences de notification push et in-app, par catégorie. */
@@ -32,6 +33,7 @@ class User extends Model
         'notify_projects',
         'notify_tasks',
         'notify_task_assignment',
+        'notify_mail',
     ];
 
     protected function casts(): array
@@ -42,6 +44,7 @@ class User extends Model
             'notify_projects' => 'boolean',
             'notify_tasks' => 'boolean',
             'notify_task_assignment' => 'boolean',
+            'notify_mail' => 'boolean',
         ];
     }
 
