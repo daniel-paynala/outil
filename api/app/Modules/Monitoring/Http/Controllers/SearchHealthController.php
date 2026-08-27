@@ -6,12 +6,11 @@ use App\Http\Controllers\Controller;
 use App\Modules\Adr\Models\Decision;
 use App\Modules\Docs\Models\DocPage;
 use App\Modules\Files\Models\ProjectFile;
-use App\Modules\Monitoring\Jobs\ReindexModel;
+use App\Modules\Monitoring\Jobs\RepairSearchIndexes;
 use App\Modules\Tasks\Models\Card;
 use App\Modules\Vault\Models\VaultEntry;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Http\JsonResponse;
-use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\DB;
 use Meilisearch\Client;
 use Throwable;
@@ -76,57 +75,44 @@ class SearchHealthController extends Controller
             ], 422);
         }
 
-        // Les réglages d'abord, en direct : ce ne sont que quelques appels au
-        // moteur, et sans eux un index repeuplé resterait inutilisable.
+        // Les modèles dont l'index est absent, ou vide alors que la table ne
+        // l'est pas : eux seuls demandent un import complet. Réindexer ce qui
+        // n'en a pas besoin coûterait des minutes pour rien.
+        $aReindexer = [];
+
         try {
-            Artisan::call('scout:sync-index-settings');
+            $client = new Client(
+                config('scout.meilisearch.host'),
+                config('scout.meilisearch.key'),
+            );
+            $stats = $client->stats();
+
+            foreach (array_keys(self::MODELS) as $class) {
+                /** @var Model $model */
+                $model = new $class;
+                $uid = config('scout.prefix').$model->searchableAs();
+                $documents = $stats['indexes'][$uid]['numberOfDocuments'] ?? null;
+
+                if ($documents === null || $documents === 0) {
+                    $aReindexer[] = $class;
+                }
+            }
         } catch (Throwable $e) {
             return response()->json([
-                'message' => 'Synchronisation des réglages refusée : '
-                    .$e->getMessage(),
+                'message' => "Le moteur ne répond pas : {$e->getMessage()}",
             ], 502);
         }
 
-        // Puis les imports, en file : un index absent doit être repeuplé, et
-        // parcourir une table entière ne tient pas dans une requête HTTP.
-        $aReindexer = [];
-
-        foreach (self::MODELS as $class => $label) {
-            /** @var Model $model */
-            $model = new $class;
-
-            try {
-                $client = new Client(
-                    config('scout.meilisearch.host'),
-                    config('scout.meilisearch.key'),
-                );
-                $stats = $client->stats();
-                $uid = config('scout.prefix').$model->searchableAs();
-
-                // Absent, ou vide alors que la base ne l'est pas : les deux
-                // demandent un import complet.
-                $documents = $stats['indexes'][$uid]['numberOfDocuments'] ?? null;
-                $lignes = DB::table($model->getTable())->count();
-
-                if ($documents === null || ($documents === 0 && $lignes > 0)) {
-                    ReindexModel::dispatch($class);
-                    $aReindexer[] = $label;
-                }
-            } catch (Throwable) {
-                // Un modèle qu'on n'arrive pas à jauger ne doit pas empêcher
-                // les autres d'être réparés.
-                continue;
-            }
-        }
+        RepairSearchIndexes::dispatch($aReindexer);
 
         return response()->json([
-            'settings_synced' => true,
-            'reindexing' => $aReindexer,
+            'queued' => true,
+            'reindexing' => count($aReindexer),
             'message' => $aReindexer === []
-                ? 'Réglages synchronisés. Aucun index à repeupler.'
-                : 'Réglages synchronisés. Réindexation lancée en arrière-plan : '
-                    .implode(', ', $aReindexer).'.',
-        ]);
+                ? 'Synchronisation lancée. Actualise dans quelques instants.'
+                : 'Synchronisation et réindexation de '.count($aReindexer)
+                    .' index lancées. Actualise dans une minute.',
+        ], 202);
     }
 
     public function show(): JsonResponse

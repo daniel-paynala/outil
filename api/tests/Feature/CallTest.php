@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Modules\Calls\Models\CallLog;
 use App\Modules\Calls\Models\VoipDevice;
 use App\Modules\Calls\Services\ApnsVoipSender;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -207,6 +208,68 @@ class CallTest extends TestCase
         $this->assertTrue(collect($urls)->contains(fn ($u) => str_contains($u, 'transport=udp')));
         $this->assertTrue(collect($urls)->contains(fn ($u) => str_contains($u, 'transport=tcp')));
         $this->assertTrue(collect($urls)->contains(fn ($u) => str_starts_with($u, 'turns:')));
+    }
+
+    // ── Historique ──────────────────────────────────────────────────────
+
+    public function test_l_historique_montre_les_appels_passes_et_recus(): void
+    {
+        // Une seule ligne par appel, écrite par l'appelant : les deux doivent
+        // pourtant la voir, chacun de son côté.
+        [$a, $entetesA] = $this->authenticate();
+        [$b, $entetesB] = $this->authenticate();
+
+        $this->postJson('/api/calls', [
+            'callee_id' => $b->id,
+            'duration' => 134,
+            'end_reason' => 'hungUp',
+            'connected_at' => now()->toIso8601String(),
+            'route' => 'direct',
+        ], $entetesA)->assertCreated();
+
+        $this->getJson('/api/calls', $entetesA)->assertOk()->assertJsonCount(1);
+        $this->getJson('/api/calls', $entetesB)->assertOk()->assertJsonCount(1);
+    }
+
+    public function test_un_appel_sans_reponse_est_consigne_aussi(): void
+    {
+        // C'est même la ligne la plus utile : celle qui rappelle qu'on doit
+        // rappeler.
+        [$_, $entetes] = $this->authenticate();
+        [$cible, $__] = $this->authenticate();
+
+        $this->postJson('/api/calls', [
+            'callee_id' => $cible->id,
+            'duration' => 0,
+            'end_reason' => 'unanswered',
+        ], $entetes)->assertCreated();
+
+        $this->assertDatabaseHas('call_logs', [
+            'callee_id' => $cible->id,
+            'end_reason' => 'unanswered',
+            'duration' => 0,
+        ]);
+    }
+
+    public function test_l_historique_ignore_les_appels_des_autres(): void
+    {
+        [$a, $_] = $this->authenticate();
+        [$b, $__] = $this->authenticate();
+        [$c, $entetesC] = $this->authenticate();
+
+        CallLog::create([
+            'caller_id' => $a->id,
+            'callee_id' => $b->id,
+            'duration' => 10,
+            'end_reason' => 'hungUp',
+        ]);
+
+        $this->getJson('/api/calls', $entetesC)->assertOk()->assertJsonCount(0);
+    }
+
+    public function test_l_historique_exige_une_authentification(): void
+    {
+        $this->getJson('/api/calls')->assertUnauthorized();
     }
 
     public function test_un_jeton_mort_est_reconnu_comme_tel(): void

@@ -4,6 +4,7 @@ namespace App\Modules\Calls\Http\Controllers;
 
 use App\Http\Controllers\Controller;
 use App\Models\User;
+use App\Modules\Calls\Models\CallLog;
 use App\Modules\Calls\Models\VoipDevice;
 use App\Modules\Calls\Services\ApnsVoipSender;
 use Illuminate\Http\JsonResponse;
@@ -99,6 +100,59 @@ class CallController extends Controller
             'devices' => $appareils->count(),
             'reached' => $atteints,
         ]);
+    }
+
+    /**
+     * Historique des appels, ceux passés comme ceux reçus.
+     *
+     * Une seule ligne par appel, écrite par l'appelant : la recherche porte
+     * donc sur les deux colonnes pour que chacun retrouve la conversation de
+     * son côté.
+     */
+    public function history(Request $request): JsonResponse
+    {
+        $moi = $this->userId($request);
+
+        $appels = CallLog::query()
+            ->where('caller_id', $moi)
+            ->orWhere('callee_id', $moi)
+            ->with([
+                'caller:id,email,name,avatar_path',
+                'callee:id,email,name,avatar_path',
+            ])
+            ->orderByDesc('created_at')
+            // Cinquante : un historique d'appels se consulte pour retrouver
+            // quelque chose de récent. Au-delà, la recherche par personne sert
+            // mieux qu'un défilement.
+            ->limit(50)
+            ->get();
+
+        return response()->json($appels);
+    }
+
+    /**
+     * Consigne un appel terminé.
+     *
+     * Appelé par **l'appelant seul**, quelle que soit l'issue : un appel refusé
+     * ou sans réponse doit figurer à l'historique des deux côtés — c'est même
+     * la ligne la plus utile, celle qui rappelle qu'on doit rappeler.
+     */
+    public function log(Request $request): JsonResponse
+    {
+        $data = $request->validate([
+            'callee_id' => ['required', 'uuid', 'exists:users,id'],
+            'connected_at' => ['nullable', 'date'],
+            'duration' => ['required', 'integer', 'min:0'],
+            'end_reason' => ['required', 'string', 'max:20'],
+            'route' => ['nullable', 'string', 'max:10'],
+        ]);
+
+        $appel = CallLog::create([
+            'caller_id' => $this->userId($request),
+            ...$data,
+        ]);
+
+        return response()->json($appel, 201);
     }
 
     /**
