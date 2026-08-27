@@ -28,15 +28,45 @@ redeviendrait obligatoire du jour au lendemain, et les connexions cesseraient.
 2. **APIs & Services → Library** → activer **Gmail API**.
 3. Activer aussi **Cloud Pub/Sub API**.
 
-## 2. Écran de consentement
+## 2. Écran de consentement — *Google Auth Platform*
 
-**APIs & Services → OAuth consent screen**
+Google a réorganisé cette partie : ce qui s'appelait « OAuth consent screen »
+est maintenant **Google Auth Platform**, et les réglages sont éclatés en
+plusieurs onglets. La correspondance :
 
-- Type d'utilisateur : **Internal**
-- Nom de l'application : `Arche`
-- Adresse d'assistance et de contact : une adresse du domaine
-- Portées : ajouter `https://www.googleapis.com/auth/gmail.modify` et
-  `https://www.googleapis.com/auth/userinfo.email`
+| Ce qu'il faut régler | Où c'est passé |
+| --- | --- |
+| Interne / Externe | **Audience** |
+| Nom de l'app, adresse d'assistance | **Branding** |
+| Portées | **Accès aux données** |
+| Identifiants OAuth | **Clients** |
+
+### Audience
+
+Type d'utilisateur : **Internal**. Voir plus haut pourquoi ce réglage est celui
+qui rend tout le reste possible.
+
+### Branding
+
+Nom de l'application : `Arche`. Adresse d'assistance et de contact : une adresse
+du domaine.
+
+### Accès aux données
+
+Bouton **« Ajouter ou supprimer des niveaux d'accès »**, puis descendre jusqu'à
+**« Ajouter manuellement des niveaux d'accès »** en bas du panneau, et coller :
+
+```
+https://www.googleapis.com/auth/gmail.modify
+https://www.googleapis.com/auth/userinfo.email
+```
+
+Puis *Ajouter au tableau* → *Mettre à jour* → *Enregistrer*.
+
+**Le passage par la saisie manuelle n'est pas un raccourci, c'est le seul
+chemin** : les portées restreintes ne figurent pas dans la liste qu'on parcourt.
+On peut chercher « gmail » longtemps sans rien trouver et croire que l'API n'est
+pas activée.
 
 `gmail.modify` couvre lecture, envoi, archivage et libellés, et met à la
 corbeille sans jamais effacer définitivement. Ne pas demander
@@ -45,7 +75,10 @@ usage supplémentaire.
 
 ## 3. Trois identifiants OAuth
 
-**APIs & Services → Credentials → Create credentials → OAuth client ID**
+**Google Auth Platform → Clients → Créer un client**
+
+(La même page reste accessible par *APIs & Services → Credentials*, sous
+l'ancien nom.)
 
 ### a. Client « Web »
 
