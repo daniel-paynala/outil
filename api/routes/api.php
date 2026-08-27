@@ -2,6 +2,7 @@
 
 use App\Modules\Activity\Http\Controllers\ActivityController;
 use App\Modules\Adr\Http\Controllers\DecisionController;
+use App\Modules\Calls\Http\Controllers\CallController;
 use App\Modules\Core\Http\Controllers\AdminUserController;
 use App\Modules\Core\Http\Controllers\PreferencesController;
 use App\Modules\Core\Http\Controllers\ProjectController;
@@ -59,6 +60,11 @@ Route::middleware(['supabase.auth', 'admin'])->get(
 );
 
 Route::middleware('supabase.auth')->group(function () {
+    // Appels internes. Le serveur ne fait que sonner : la voix va d'un
+    // téléphone à l'autre en direct, la signalisation passe par Supabase.
+    Route::post('calls/devices', [CallController::class, 'registerDevice']);
+    Route::post('calls/ring', [CallController::class, 'ring']);
+
     // Rattachement d'une boîte Google Workspace. Trois opérations seulement :
     // lire et écrire du courrier se fait de l'appareil à Gmail directement,
     // sans passer par notre infrastructure.
