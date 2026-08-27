@@ -4,7 +4,7 @@ namespace App\Modules\Mail\Http\Controllers;
 
 use App\Http\Controllers\Controller;
 use App\Modules\Mail\Models\GoogleAccount;
-use App\Modules\Mail\Services\GmailWatcher;
+use App\Modules\Mail\Services\GmailReader;
 use App\Modules\Mail\Services\GoogleOAuth;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -22,16 +22,17 @@ class MailController extends Controller
 {
     public function __construct(
         private readonly GoogleOAuth $oauth,
-        private readonly GmailWatcher $watcher,
+        private readonly GmailReader $reader,
     ) {}
 
     /**
      * État de la connexion, tel que l'écran de réglages le montre.
      *
-     * `watch_healthy` mérite d'exister séparément de `connected` : un compte
-     * peut être rattaché alors que la surveillance s'est éteinte — jeton
-     * révoqué, renouvellement en échec. Les confondre ferait dire à l'app que
-     * tout va bien alors qu'aucune notification n'arrivera plus.
+     * `polling_healthy` mérite d'exister séparément de `connected` : un compte
+     * peut être rattaché — donc parfaitement lisible depuis l'app — alors que
+     * la relève ne tourne plus : planificateur arrêté, autorisation révoquée.
+     * Les confondre ferait dire à l'app que tout va bien alors qu'aucune
+     * notification n'arrivera plus.
      */
     public function status(Request $request): JsonResponse
     {
@@ -41,10 +42,8 @@ class MailController extends Controller
             'connected' => $account !== null,
             'email' => $account?->email,
             'connected_at' => $account?->created_at?->toIso8601String(),
-            'watch_expires_at' => $account?->watch_expires_at?->toIso8601String(),
-            'watch_healthy' => $account !== null
-                && $account->watch_expires_at !== null
-                && $account->watch_expires_at->isFuture(),
+            'last_polled_at' => $account?->last_polled_at?->toIso8601String(),
+            'polling_healthy' => $account !== null && $account->pollingHealthy(),
             'last_error' => $account?->last_error,
             'last_error_at' => $account?->last_error_at?->toIso8601String(),
             // L'app affiche l'écran de connexion différemment selon que le
@@ -90,17 +89,22 @@ class MailController extends Controller
                 'email' => $email,
                 'refresh_token' => $jetons['refresh_token'],
                 'scopes' => $jetons['scope'],
-                // Repartir de zéro : un ancien curseur d'historique appartient
-                // à une surveillance qui n'existe plus.
+                // Repartir de zéro : un ancien curseur d'historique désigne un
+                // état de la boîte que Google a peut-être déjà oublié.
                 'history_id' => null,
-                'watch_expires_at' => null,
+                'last_polled_at' => null,
                 'last_error' => null,
                 'last_error_at' => null,
             ],
         );
 
+        // Première relève immédiate : elle ne notifie rien — elle prend le
+        // numéro d'historique courant — mais elle valide le jeton tout de
+        // suite. Sans elle, une autorisation incomplète ne se découvrirait
+        // qu'à la relève suivante, deux minutes plus tard, et l'écran
+        // annoncerait un succès qui n'en est pas un.
         try {
-            $this->watcher->start($account);
+            $this->reader->newMessages($account);
         } catch (Throwable $e) {
             // Le rattachement reste valable : lire et écrire fonctionneront
             // depuis l'app. Seules les notifications manquent, et le dire vaut
@@ -109,21 +113,21 @@ class MailController extends Controller
 
             return response()->json([
                 'email' => $account->email,
-                'watch_healthy' => false,
-                'warning' => 'Boîte rattachée, mais la surveillance n\'a pas '
-                    .'démarré : '.$e->getMessage(),
+                'polling_healthy' => false,
+                'warning' => 'Boîte rattachée, mais Gmail a refusé la première '
+                    .'lecture : '.$e->getMessage(),
             ], 201);
         }
 
         return response()->json([
             'email' => $account->email,
-            'watch_healthy' => true,
-            'watch_expires_at' => $account->fresh()->watch_expires_at?->toIso8601String(),
+            'polling_healthy' => true,
+            'last_polled_at' => $account->fresh()->last_polled_at?->toIso8601String(),
         ], 201);
     }
 
     /**
-     * Débranche la boîte : arrête la surveillance, révoque, oublie le jeton.
+     * Débranche la boîte : révoque l'accès et oublie le jeton.
      */
     public function disconnect(Request $request): JsonResponse
     {
@@ -133,12 +137,11 @@ class MailController extends Controller
             return response()->json(null, 204);
         }
 
-        $this->watcher->stop($account);
-
         // Révoquer avant de supprimer : après, on n'aurait plus le jeton, et
         // l'autorisation resterait active dans le compte Google de la personne
         // — qui croirait pourtant avoir coupé l'accès.
         $this->oauth->revoke($account->refresh_token);
+        $this->oauth->forgetToken($account->refresh_token);
 
         $account->delete();
 

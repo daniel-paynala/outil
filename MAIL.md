@@ -26,7 +26,6 @@ redeviendrait obligatoire du jour au lendemain, et les connexions cesseraient.
 
 1. Console Google Cloud → créer un projet (ou réutiliser celui de l'organisation).
 2. **APIs & Services → Library** → activer **Gmail API**.
-3. Activer aussi **Cloud Pub/Sub API**.
 
 ## 2. Écran de consentement — *Google Auth Platform*
 
@@ -127,35 +126,42 @@ l'app par sa signature.
   `123-abc.apps.googleusercontent.com` devient
   `com.googleusercontent.apps.123-abc`.
 
-## 4. Pub/Sub, pour les notifications
+## 4. Les notifications
 
-Sans cette section, l'onglet fonctionne — on lit et on écrit — mais aucune
-notification n'arrive.
+**Rien à faire ici.** Le serveur relève les boîtes toutes les deux minutes,
+avec le jeton de rafraîchissement qu'il détient déjà. Le conteneur `scheduler`
+de la compose s'en charge.
 
-1. **Pub/Sub → Topics → Create topic**, par exemple `arche-gmail`.
-   Le nom complet est `projects/<projet>/topics/arche-gmail`.
+### Pourquoi pas la veille poussée de Gmail
 
-2. **Donner à Gmail le droit de publier.** Sur le sujet → *Permissions* →
-   *Add principal* :
-   - Principal : `gmail-api-push@system.gserviceaccount.com`
-   - Rôle : **Pub/Sub Publisher**
+Gmail sait prévenir un serveur d'une arrivée, par `users.watch()` et un sujet
+Pub/Sub. Cette voie a été essayée puis abandonnée, pour une raison de terrain :
+elle exige d'accorder un rôle IAM à `gmail-api-push@system.gserviceaccount.com`,
+et l'organisation Paynala applique la règle **« Partage restreint au domaine »**
+(`constraints/iam.allowedPolicyMemberDomains`), qui refuse tout principal hors
+de `paynala.com`. La lever demandait un droit d'administration au niveau de
+l'organisation.
 
-   Sans cela, `users.watch()` échoue avec un message qui parle de permissions
-   sans dire lesquelles.
+Le détour s'est révélé meilleur que l'obstacle :
 
-3. **Créer une souscription push** sur ce sujet :
-   - Delivery type : **Push**
-   - Endpoint URL :
-     `https://<votre-api>/api/mail/pubsub?token=<GOOGLE_PUBSUB_TOKEN>`
-   - Acknowledgement deadline : 10 s suffit — le point d'entrée accuse
-     réception immédiatement et fait le travail en file.
+| | Veille poussée | Relève périodique |
+| --- | --- | --- |
+| Délai de notification | quasi immédiat | jusqu'à 2 min |
+| Expire | **oui, tous les 7 jours** | non |
+| Point d'entrée public | oui, gardé par un jeton | aucun |
+| Pièces à surveiller | sujet, abonnement, renouvellement | une tâche planifiée |
 
-   Le jeton en paramètre d'URL est ce qui distingue un appel de Google de
-   n'importe qui ayant trouvé l'adresse : ce point d'entrée est nécessairement
-   hors authentification. Le générer avec `openssl rand -hex 32`.
+C'est la deuxième ligne qui tranche. Une veille non renouvelée s'éteint **sans
+erreur, sans avis et sans trace** : les notifications cessent d'arriver et rien
+ne relie l'effet à la cause. Arche a déjà vécu cette panne avec sa file
+d'attente, et elle a coûté des jours. Une relève périodique n'a pas d'état
+caché — si elle s'arrête, `last_polled_at` cesse d'avancer et **Profil →
+Courrier** le montre.
 
-   **L'adresse doit être en HTTPS et publiquement joignable.** Pub/Sub refuse
-   les adresses IP nues et le HTTP simple.
+Coût mesuré : environ 3 600 appels Gmail par jour pour cinq boîtes, très loin
+des quotas. Le jeton d'accès étant mis en cache cinquante minutes, presque aucun
+échange de jetons.
+
 
 ---
 
@@ -167,8 +173,6 @@ notification n'arrive.
 GOOGLE_CLIENT_ID=<client Web>.apps.googleusercontent.com
 GOOGLE_CLIENT_SECRET=<secret du client Web>
 GOOGLE_WORKSPACE_DOMAIN=paynala.com
-GOOGLE_PUBSUB_TOPIC=projects/<projet>/topics/arche-gmail
-GOOGLE_PUBSUB_TOKEN=<la sortie de openssl rand -hex 32>
 ```
 
 Puis appliquer la migration :
@@ -203,14 +207,21 @@ n'est pas versionné.
    pouvoir faire ; si à la place il annonce « Courrier non configuré », il
    **nomme le côté qui manque** — serveur ou app.
 2. Rattacher. Un compte hors du domaine est refusé, c'est voulu.
-3. **Profil → Courrier** doit afficher l'adresse et la date jusqu'à laquelle la
-   veille est active.
-4. S'envoyer un message depuis un autre compte : la notification doit arriver.
+3. **Profil → Courrier** doit afficher l'adresse et l'heure de la dernière
+   relève. Cette heure doit avancer toutes les deux minutes.
+4. S'envoyer un message depuis un autre compte : la notification arrive dans les
+   deux minutes.
 
 Si la boîte se lit mais que rien n'arrive, l'onglet Mail affiche un bandeau
 « notifications arrêtées » et **Profil → Courrier** donne le motif exact remonté
-par Google. C'est presque toujours la section 4 qui est incomplète — le plus
-souvent le droit de publication de `gmail-api-push@system.gserviceaccount.com`.
+par Google. Deux causes seulement :
+
+- **Le conteneur `scheduler` ne tourne pas.** `docker compose ps` le dira. C'est
+  lui qui déclenche la relève ; sans lui, `last_polled_at` reste figé.
+- **L'autorisation Google a été retirée** — mot de passe changé, accès révoqué
+  depuis le compte. Le motif contient alors `invalid_grant`, et le compte est
+  mis de côté une heure pour ne pas marteler Google inutilement. Se débrancher
+  puis rattacher à nouveau le répare immédiatement.
 
 ---
 
@@ -225,11 +236,11 @@ répondre et envoyer. Le serveur ne demande que l'expéditeur et l'objet d'un
 message qui vient d'arriver, le temps d'écrire un bandeau de notification, et ne
 les conserve pas.
 
-Se débrancher depuis **Profil → Courrier** arrête la surveillance, révoque
+Se débrancher depuis **Profil → Courrier** arrête la relève, révoque
 l'autorisation dans le compte Google et efface le jeton.
 
 ## Rotation d'`APP_KEY`
 
-Changer l'`APP_KEY` de Laravel rend **tous les jetons illisibles** : les
-surveillances s'arrêteront et chacun devra rattacher sa boîte à nouveau. Rien
+Changer l'`APP_KEY` de Laravel rend **tous les jetons illisibles** : la relève
+s'arrêtera et chacun devra rattacher sa boîte à nouveau. Rien
 n'est perdu — aucun courrier n'est stocké — mais c'est à savoir avant, pas après.

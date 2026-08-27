@@ -25,7 +25,7 @@ class GoogleAccount extends Model
         'refresh_token',
         'scopes',
         'history_id',
-        'watch_expires_at',
+        'last_polled_at',
         'last_error',
         'last_error_at',
     ];
@@ -46,7 +46,7 @@ class GoogleAccount extends Model
             // Chiffré au repos avec l'APP_KEY : une fuite de la base seule ne
             // donne rien d'exploitable.
             'refresh_token' => 'encrypted',
-            'watch_expires_at' => 'datetime',
+            'last_polled_at' => 'datetime',
             'last_error_at' => 'datetime',
         ];
     }
@@ -57,16 +57,18 @@ class GoogleAccount extends Model
     }
 
     /**
-     * La surveillance Gmail est-elle encore active ?
+     * La relève tourne-t-elle ?
      *
-     * Google la limite à 7 jours. On considère qu'elle est à renouveler bien
-     * avant l'échéance — un renouvellement raté doit pouvoir être retenté
-     * plusieurs fois avant que les notifications ne s'arrêtent réellement.
+     * Le seuil est volontairement large au regard de l'intervalle de deux
+     * minutes : un planificateur redémarré, une relève un peu longue ou une
+     * heure creuse ne doivent pas faire clignoter l'écran de réglages. Passé
+     * un quart d'heure sans relève, en revanche, quelque chose est cassé —
+     * planificateur arrêté, file bloquée — et il faut le dire.
      */
-    public function watchNeedsRenewal(): bool
+    public function pollingHealthy(): bool
     {
-        return $this->watch_expires_at === null
-            || $this->watch_expires_at->subDay()->isPast();
+        return $this->last_polled_at !== null
+            && $this->last_polled_at->diffInMinutes(now()) < 15;
     }
 
     public function recordError(string $message): void

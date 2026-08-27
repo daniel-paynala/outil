@@ -20,8 +20,8 @@ use Illuminate\Support\Facades\Schema;
  *
  * En revanche, **aucun courrier n'y est stocké** : l'app parle à Gmail
  * directement pour lire et écrire. Le serveur ne se sert de son jeton que pour
- * renouveler la surveillance et composer le titre d'une notification, sans rien
- * conserver.
+ * relever les arrivées toutes les deux minutes et composer le titre d'une
+ * notification, sans rien conserver.
  */
 return new class extends Migration
 {
@@ -52,10 +52,13 @@ return new class extends Migration
             // qu'on sait ce qui est arrivé depuis.
             $table->string('history_id', 40)->nullable();
 
-            // La surveillance Gmail expire au bout de 7 jours et doit être
-            // renouvelée. Sans cette date, on ne saurait pas qu'elle s'est
-            // éteinte — et les notifications cesseraient en silence.
-            $table->timestamp('watch_expires_at')->nullable();
+            // Heure de la dernière relève réussie.
+            //
+            // C'est le seul témoin que la boucle tourne. Une veille poussée
+            // aurait un état caché — elle expire et s'éteint sans rien dire ;
+            // ici, si la relève s'arrête, cette date cesse d'avancer et
+            // l'écran de réglages le montre.
+            $table->timestamp('last_polled_at')->nullable();
 
             // Dernier échec de renouvellement ou de rafraîchissement. Rendu
             // par `/api/mail/status` : un jeton révoqué côté Google ne se voit
@@ -68,8 +71,8 @@ return new class extends Migration
             $table->foreign('user_id')->references('id')->on('users')
                 ->cascadeOnDelete();
 
-            // Le renouvellement quotidien balaie par cette colonne.
-            $table->index('watch_expires_at');
+            // La relève balaie par cette colonne.
+            $table->index('last_polled_at');
         });
     }
 

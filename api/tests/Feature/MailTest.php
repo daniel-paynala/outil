@@ -2,28 +2,29 @@
 
 namespace Tests\Feature;
 
-use App\Modules\Mail\Jobs\NotifyNewMail;
+use App\Modules\Mail\Jobs\PollGmailInboxes;
 use App\Modules\Mail\Models\GoogleAccount;
+use App\Modules\Mail\Services\GmailReader;
+use App\Modules\Mail\Services\GoogleOAuth;
+use App\Modules\Messagerie\Services\PushSender;
 use Illuminate\Foundation\Testing\RefreshDatabase;
-use Illuminate\Support\Facades\Bus;
-use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use Tests\TestCase;
 
 /**
- * Rattachement d'une boîte Google Workspace.
+ * Rattachement d'une boîte Google Workspace, et relève de ce qui y arrive.
  *
- * Deux zones à risque et une seule vraiment dangereuse.
+ * Deux zones à risque.
  *
- * Le point d'entrée Pub/Sub est **public par nécessité** — c'est Google qui
- * appelle, aucun jeton Supabase ne peut accompagner la requête — et il
- * déclenche du travail. Sa protection est un secret partagé, et c'est
- * exactement le genre de garde qu'on casse sans s'en apercevoir.
+ * Le **jeton de rafraîchissement** donne un accès permanent à la boîte de
+ * quelqu'un. Qu'il ne sorte jamais par une réponse JSON et qu'il soit chiffré
+ * au repos n'est pas une précaution de forme.
  *
- * Le jeton de rafraîchissement, lui, donne un accès permanent à la boîte de
- * quelqu'un. Qu'il ne sorte jamais par une réponse JSON n'est pas une
- * précaution de forme.
+ * La **relève** tourne toutes les deux minutes sans que personne ne la
+ * regarde. Un compte en échec ne doit pas bloquer les autres, une autorisation
+ * révoquée ne doit pas être réessayée sept cents fois par jour, et une boîte
+ * tout juste rattachée ne doit pas notifier tout son historique.
  */
 class MailTest extends TestCase
 {
@@ -37,8 +38,6 @@ class MailTest extends TestCase
             'google.client_id' => 'client-de-test.apps.googleusercontent.com',
             'google.client_secret' => 'secret-de-test',
             'google.workspace_domain' => 'paynala.com',
-            'google.topic' => 'projects/arche/topics/gmail',
-            'google.pubsub_token' => 'jeton-partage-de-test',
         ]);
     }
 
@@ -60,7 +59,7 @@ class MailTest extends TestCase
             ->assertJsonPath('configured', true);
     }
 
-    public function test_le_statut_distingue_une_surveillance_eteinte_d_une_absence_de_compte(): void
+    public function test_le_statut_distingue_une_releve_arretee_d_une_absence_de_compte(): void
     {
         // Confondre les deux ferait dire à l'app que tout va bien alors
         // qu'aucune notification n'arrivera plus.
@@ -70,13 +69,31 @@ class MailTest extends TestCase
             'user_id' => $user->id,
             'email' => 'daniel@paynala.com',
             'refresh_token' => 'jeton',
-            'watch_expires_at' => now()->subDay(),
+            'last_polled_at' => now()->subHour(),
         ]);
 
         $this->getJson('/api/mail/status', $entetes)
             ->assertOk()
             ->assertJsonPath('connected', true)
-            ->assertJsonPath('watch_healthy', false);
+            ->assertJsonPath('polling_healthy', false);
+    }
+
+    public function test_une_releve_recente_est_consideree_saine(): void
+    {
+        // Le seuil est large au regard de l'intervalle de deux minutes : un
+        // planificateur redémarré ne doit pas faire clignoter l'écran.
+        [$user, $entetes] = $this->authenticate();
+
+        GoogleAccount::create([
+            'user_id' => $user->id,
+            'email' => 'daniel@paynala.com',
+            'refresh_token' => 'jeton',
+            'last_polled_at' => now()->subMinutes(5),
+        ]);
+
+        $this->getJson('/api/mail/status', $entetes)
+            ->assertOk()
+            ->assertJsonPath('polling_healthy', true);
     }
 
     public function test_le_jeton_de_rafraichissement_ne_sort_jamais_par_l_api(): void
@@ -87,7 +104,7 @@ class MailTest extends TestCase
             'user_id' => $user->id,
             'email' => 'daniel@paynala.com',
             'refresh_token' => 'CE-JETON-NE-DOIT-JAMAIS-SORTIR',
-            'watch_expires_at' => now()->addDays(6),
+            'last_polled_at' => now(),
         ]);
 
         $reponse = $this->getJson('/api/mail/status', $entetes)->assertOk();
@@ -109,22 +126,18 @@ class MailTest extends TestCase
             'refresh_token' => 'jeton-en-clair',
         ]);
 
-        $brut = DB::table('google_accounts')
-            ->value('refresh_token');
+        $brut = DB::table('google_accounts')->value('refresh_token');
 
         $this->assertNotSame('jeton-en-clair', $brut);
-        $this->assertSame(
-            'jeton-en-clair',
-            GoogleAccount::first()->refresh_token,
-        );
+        $this->assertSame('jeton-en-clair', GoogleAccount::first()->refresh_token);
     }
 
     // ── Rattachement ────────────────────────────────────────────────────
 
     public function test_une_adresse_hors_du_domaine_est_refusee(): void
     {
-        // Sans ce garde-fou, quelqu'un ferait surveiller sa boîte personnelle
-        // par le serveur de l'entreprise.
+        // Sans ce garde-fou, quelqu'un ferait relever sa boîte personnelle par
+        // le serveur de l'entreprise.
         [$_, $entetes] = $this->authenticate();
 
         $this->postJson('/api/mail/connect', [
@@ -139,8 +152,8 @@ class MailTest extends TestCase
 
     public function test_un_echange_sans_jeton_de_rafraichissement_est_refuse(): void
     {
-        // Google n'en rend qu'à la première autorisation. Accepter sans lui
-        // donnerait une surveillance qui meurt une heure plus tard.
+        // Google n'en rend un qu'à la première autorisation. Accepter sans lui
+        // donnerait une relève qui meurt une heure plus tard.
         Http::fake([
             'oauth2.googleapis.com/token' => Http::response([
                 'access_token' => 'jeton-court',
@@ -157,38 +170,40 @@ class MailTest extends TestCase
             ->assertJsonPath('message', fn ($m) => str_contains($m, 'révoquer'));
     }
 
-    public function test_un_rattachement_reussi_demarre_la_surveillance(): void
+    public function test_un_rattachement_reussi_prend_le_curseur_sans_notifier(): void
     {
+        // Sans cette première lecture, la connexion notifierait chaque message
+        // déjà présent dans la boîte.
         Http::fake([
             'oauth2.googleapis.com/token' => Http::response([
                 'refresh_token' => 'jeton-long',
                 'access_token' => 'jeton-court',
                 'scope' => 'https://www.googleapis.com/auth/gmail.modify',
             ], 200),
-            'gmail.googleapis.com/*/watch' => Http::response([
+            'gmail.googleapis.com/*/profile' => Http::response([
+                'emailAddress' => 'daniel@paynala.com',
                 'historyId' => '987654',
-                'expiration' => (string) (now()->addDays(7)->timestamp * 1000),
             ], 200),
         ]);
 
-        [$user, $entetes] = $this->authenticate();
+        [$_, $entetes] = $this->authenticate();
 
         $this->postJson('/api/mail/connect', [
             'server_auth_code' => 'code',
             'email' => 'Daniel@Paynala.com',
         ], $entetes)
             ->assertCreated()
-            ->assertJsonPath('watch_healthy', true);
+            ->assertJsonPath('polling_healthy', true);
 
         $compte = GoogleAccount::first();
-        // L'adresse est normalisée : Pub/Sub la rendra en minuscules, et la
-        // recherche du compte échouerait sinon.
+        // L'adresse est normalisée : les comparaisons ultérieures échoueraient
+        // sinon sur une différence de casse.
         $this->assertSame('daniel@paynala.com', $compte->email);
         $this->assertSame('987654', $compte->history_id);
-        $this->assertTrue($compte->watch_expires_at->isFuture());
+        $this->assertNotNull($compte->last_polled_at);
     }
 
-    public function test_une_surveillance_qui_ne_demarre_pas_n_annule_pas_le_rattachement(): void
+    public function test_un_refus_de_gmail_n_annule_pas_le_rattachement(): void
     {
         // Lire et écrire fonctionneront depuis l'app : seules les
         // notifications manquent, et le dire vaut mieux que d'annuler une
@@ -199,8 +214,8 @@ class MailTest extends TestCase
                 'access_token' => 'jeton-court',
             ], 200),
             'gmail.googleapis.com/*' => Http::response([
-                'error' => ['message' => 'Sujet Pub/Sub introuvable'],
-            ], 400),
+                'error' => ['message' => 'Insufficient Permission'],
+            ], 403),
         ]);
 
         [$_, $entetes] = $this->authenticate();
@@ -210,133 +225,162 @@ class MailTest extends TestCase
             'email' => 'daniel@paynala.com',
         ], $entetes)->assertCreated();
 
-        $this->assertFalse($reponse->json('watch_healthy'));
+        $this->assertFalse($reponse->json('polling_healthy'));
         $this->assertNotNull($reponse->json('warning'));
         $this->assertDatabaseCount('google_accounts', 1);
         $this->assertNotNull(GoogleAccount::first()->last_error);
     }
 
-    // ── Réception Pub/Sub ───────────────────────────────────────────────
+    // ── Relève ──────────────────────────────────────────────────────────
 
-    public function test_la_reception_refuse_un_appel_sans_secret(): void
+    public function test_la_releve_fait_avancer_le_curseur(): void
     {
-        Bus::fake();
-
-        $this->postJson('/api/mail/pubsub', ['message' => []])
-            ->assertForbidden();
-
-        Bus::assertNothingDispatched();
-    }
-
-    public function test_la_reception_refuse_un_mauvais_secret(): void
-    {
-        Bus::fake();
-
-        $this->postJson('/api/mail/pubsub?token=pas-le-bon', ['message' => []])
-            ->assertForbidden();
-
-        Bus::assertNothingDispatched();
-    }
-
-    public function test_la_reception_declenche_le_travail_pour_le_bon_compte(): void
-    {
-        Bus::fake();
+        Http::fake([
+            'oauth2.googleapis.com/token' => Http::response(['access_token' => 'x'], 200),
+            'gmail.googleapis.com/*/history*' => Http::response([
+                'historyId' => '200',
+                'history' => [],
+            ], 200),
+        ]);
 
         [$user, $_] = $this->authenticate();
-        GoogleAccount::create([
+        $compte = GoogleAccount::create([
             'user_id' => $user->id,
             'email' => 'daniel@paynala.com',
             'refresh_token' => 'jeton',
+            'history_id' => '100',
         ]);
 
-        $this->postJson(
-            '/api/mail/pubsub?token=jeton-partage-de-test',
-            $this->avis('daniel@paynala.com', 'avis-1'),
-        )->assertNoContent();
+        (new PollGmailInboxes)->handle(
+            app(GmailReader::class),
+            app(GoogleOAuth::class),
+            app(PushSender::class),
+        );
 
-        Bus::assertDispatched(NotifyNewMail::class);
+        // Sans cet avancement, le même historique serait redemandé
+        // indéfiniment, deux minutes après deux minutes.
+        $this->assertSame('200', $compte->fresh()->history_id);
+        $this->assertNotNull($compte->fresh()->last_polled_at);
     }
 
-    public function test_un_avis_deja_traite_est_acquitte_sans_retravail(): void
+    public function test_un_curseur_trop_ancien_fait_repartir_du_present(): void
     {
-        // Pub/Sub garantit « au moins une fois » : sans déduplication, une
-        // seule arrivée produirait plusieurs notifications identiques.
-        Bus::fake();
-        Cache::flush();
+        // Google ne garde qu'une fenêtre glissante d'historique. Sans cette
+        // reprise, la relève resterait bloquée sur un curseur mort.
+        Http::fake([
+            'oauth2.googleapis.com/token' => Http::response(['access_token' => 'x'], 200),
+            'gmail.googleapis.com/*/history*' => Http::response([], 404),
+            'gmail.googleapis.com/*/profile' => Http::response(['historyId' => '999'], 200),
+        ]);
 
         [$user, $_] = $this->authenticate();
-        GoogleAccount::create([
+        $compte = GoogleAccount::create([
             'user_id' => $user->id,
             'email' => 'daniel@paynala.com',
             'refresh_token' => 'jeton',
+            'history_id' => '1',
         ]);
 
-        $avis = $this->avis('daniel@paynala.com', 'avis-repete');
+        (new PollGmailInboxes)->handle(
+            app(GmailReader::class),
+            app(GoogleOAuth::class),
+            app(PushSender::class),
+        );
 
-        $this->postJson('/api/mail/pubsub?token=jeton-partage-de-test', $avis)
-            ->assertNoContent();
-        $this->postJson('/api/mail/pubsub?token=jeton-partage-de-test', $avis)
-            ->assertNoContent();
-
-        Bus::assertDispatchedTimes(NotifyNewMail::class, 1);
+        $this->assertSame('999', $compte->fresh()->history_id);
     }
 
-    public function test_une_charge_illisible_est_acquittee_et_non_retentee(): void
+    public function test_un_compte_en_echec_n_empeche_pas_les_autres(): void
     {
-        // Répondre en erreur ferait insister Google pendant sept jours sur un
-        // message qui ne deviendra jamais lisible.
-        Bus::fake();
+        // Chacun dans son propre `try` : une autorisation cassée chez l'un ne
+        // doit pas priver les quatre autres de notifications.
+        Http::fake([
+            'oauth2.googleapis.com/token' => Http::response(['access_token' => 'x'], 200),
+            'gmail.googleapis.com/*/history*' => Http::sequence()
+                ->push(['error' => ['message' => 'Invalid Credentials']], 401)
+                ->push(['historyId' => '300', 'history' => []], 200),
+        ]);
 
-        $this->postJson('/api/mail/pubsub?token=jeton-partage-de-test', [
-            'message' => ['data' => 'pas-du-base64-valide!!', 'messageId' => 'x'],
-        ])->assertNoContent();
+        [$a, $_] = $this->authenticate();
+        [$b, $__] = $this->authenticate();
 
-        Bus::assertNothingDispatched();
+        $casse = GoogleAccount::create([
+            'user_id' => $a->id, 'email' => 'a@paynala.com',
+            'refresh_token' => 'jeton-a', 'history_id' => '10',
+        ]);
+        $sain = GoogleAccount::create([
+            'user_id' => $b->id, 'email' => 'b@paynala.com',
+            'refresh_token' => 'jeton-b', 'history_id' => '20',
+        ]);
+
+        (new PollGmailInboxes)->handle(
+            app(GmailReader::class),
+            app(GoogleOAuth::class),
+            app(PushSender::class),
+        );
+
+        $this->assertNotNull($casse->fresh()->last_error);
+        $this->assertSame('300', $sain->fresh()->history_id);
     }
 
-    public function test_un_avis_pour_une_boite_inconnue_est_acquitte(): void
+    public function test_une_autorisation_perdue_est_mise_en_quarantaine(): void
     {
-        Bus::fake();
+        // Sans quarantaine, un compte révoqué serait réessayé sept cents fois
+        // par jour, pour échouer identiquement à chaque fois.
+        Http::fake([
+            'oauth2.googleapis.com/token' => Http::response(['access_token' => 'x'], 200),
+            'gmail.googleapis.com/*' => Http::response(['historyId' => '500'], 200),
+        ]);
 
-        $this->postJson(
-            '/api/mail/pubsub?token=jeton-partage-de-test',
-            $this->avis('inconnu@paynala.com', 'avis-orphelin'),
-        )->assertNoContent();
+        [$user, $_] = $this->authenticate();
+        $compte = GoogleAccount::create([
+            'user_id' => $user->id,
+            'email' => 'daniel@paynala.com',
+            'refresh_token' => 'jeton',
+            'history_id' => '10',
+            'last_error' => 'invalid_grant — Token has been expired or revoked.',
+            'last_error_at' => now()->subMinutes(5),
+        ]);
 
-        Bus::assertNothingDispatched();
+        (new PollGmailInboxes)->handle(
+            app(GmailReader::class),
+            app(GoogleOAuth::class),
+            app(PushSender::class),
+        );
+
+        // Curseur inchangé : le compte n'a pas été relevé.
+        $this->assertSame('10', $compte->fresh()->history_id);
+        Http::assertNothingSent();
     }
 
-    // ── Renouvellement ──────────────────────────────────────────────────
-
-    public function test_une_surveillance_proche_de_l_expiration_doit_etre_renouvelee(): void
+    public function test_une_erreur_passagere_n_est_pas_mise_en_quarantaine(): void
     {
-        $compte = new GoogleAccount(['watch_expires_at' => now()->addHours(12)]);
-        $this->assertTrue($compte->watchNeedsRenewal());
+        // Une coupure réseau doit être réessayée deux minutes plus tard, pas
+        // une heure plus tard.
+        Http::fake([
+            'oauth2.googleapis.com/token' => Http::response(['access_token' => 'x'], 200),
+            'gmail.googleapis.com/*/history*' => Http::response([
+                'historyId' => '400', 'history' => [],
+            ], 200),
+        ]);
 
-        $compte = new GoogleAccount(['watch_expires_at' => now()->addDays(5)]);
-        $this->assertFalse($compte->watchNeedsRenewal());
+        [$user, $_] = $this->authenticate();
+        $compte = GoogleAccount::create([
+            'user_id' => $user->id,
+            'email' => 'daniel@paynala.com',
+            'refresh_token' => 'jeton',
+            'history_id' => '10',
+            'last_error' => 'cURL error 28: Connection timed out',
+            'last_error_at' => now()->subMinutes(2),
+        ]);
 
-        // Jamais démarrée : à renouveler, évidemment.
-        $compte = new GoogleAccount(['watch_expires_at' => null]);
-        $this->assertTrue($compte->watchNeedsRenewal());
-    }
+        (new PollGmailInboxes)->handle(
+            app(GmailReader::class),
+            app(GoogleOAuth::class),
+            app(PushSender::class),
+        );
 
-    /**
-     * Enveloppe Pub/Sub telle que Google la publie.
-     *
-     * @return array<string, mixed>
-     */
-    private function avis(string $email, string $messageId): array
-    {
-        return [
-            'message' => [
-                'data' => base64_encode(json_encode([
-                    'emailAddress' => $email,
-                    'historyId' => 123456,
-                ])),
-                'messageId' => $messageId,
-            ],
-            'subscription' => 'projects/arche/subscriptions/gmail-push',
-        ];
+        $this->assertSame('400', $compte->fresh()->history_id);
+        $this->assertNull($compte->fresh()->last_error);
     }
 }

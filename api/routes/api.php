@@ -10,7 +10,6 @@ use App\Modules\Docs\Http\Controllers\DocController;
 use App\Modules\Files\Http\Controllers\ProjectFileController;
 use App\Modules\Github\Http\Controllers\GithubController;
 use App\Modules\Mail\Http\Controllers\MailController;
-use App\Modules\Mail\Http\Controllers\PubSubController;
 use App\Modules\Messagerie\Http\Controllers\ConversationController;
 use App\Modules\Messagerie\Http\Controllers\MessageController;
 use App\Modules\Monitoring\Http\Controllers\IntegrityController;
@@ -58,13 +57,6 @@ Route::middleware(['supabase.auth', 'admin'])->get(
     '/monitoring/errors',
     [ServerErrorsController::class, 'show'],
 );
-
-// Réception des avis Gmail publiés par Google Pub/Sub.
-//
-// Hors authentification par nécessité — c'est Google qui appelle, aucun jeton
-// Supabase ne peut accompagner la requête. L'accès est gardé par un secret
-// partagé en paramètre d'URL, vérifié en temps constant dans le contrôleur.
-Route::post('/mail/pubsub', PubSubController::class);
 
 Route::middleware('supabase.auth')->group(function () {
     // Rattachement d'une boîte Google Workspace. Trois opérations seulement :

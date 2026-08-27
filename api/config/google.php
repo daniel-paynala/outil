@@ -30,21 +30,19 @@ return [
 
     /*
     |--------------------------------------------------------------------------
-    | Notifications Gmail
+    | Relève des boîtes
     |--------------------------------------------------------------------------
     |
-    | `topic` est le sujet Pub/Sub que Gmail alimente, au format complet
-    | `projects/<projet>/topics/<sujet>`.
+    | Aucune configuration : la relève est planifiée dans `routes/console.php`
+    | et n'a besoin que du jeton de rafraîchissement de chaque compte.
     |
-    | `pubsub_token` est un secret partagé placé en paramètre d'URL de
-    | l'abonnement push. Le point d'entrée de réception est nécessairement hors
-    | authentification — c'est Google qui appelle, pas un utilisateur — et ce
-    | jeton est ce qui distingue un appel légitime de n'importe qui ayant
-    | trouvé l'adresse.
+    | La voie poussée de Gmail — `users.watch()` et un sujet Pub/Sub — a été
+    | abandonnée : elle exige d'accorder un rôle IAM à
+    | `gmail-api-push@system.gserviceaccount.com`, et la règle « Partage
+    | restreint au domaine » de l'organisation Paynala refuse tout principal
+    | hors du domaine. Voir MAIL.md.
     |
     */
-    'topic' => env('GOOGLE_PUBSUB_TOPIC'),
-    'pubsub_token' => env('GOOGLE_PUBSUB_TOKEN'),
 
     /*
     |--------------------------------------------------------------------------

@@ -2,6 +2,7 @@
 
 namespace App\Modules\Mail\Services;
 
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 use RuntimeException;
 
@@ -18,6 +19,9 @@ class GoogleOAuth
     private const TOKEN_URL = 'https://oauth2.googleapis.com/token';
 
     private const REVOKE_URL = 'https://oauth2.googleapis.com/revoke';
+
+    /** Durée de conservation d'un jeton d'accès — Google en accorde 3600 s. */
+    private const TOKEN_TTL = 3000;
 
     /**
      * Transforme le code d'autorisation rendu par l'appareil en jetons.
@@ -72,12 +76,26 @@ class GoogleOAuth
     /**
      * Obtient un jeton d'accès à partir du jeton de rafraîchissement.
      *
-     * Non mis en cache ici : l'appelant sait mieux que ce service combien de
-     * temps il va s'en servir, et un jeton mis en cache trop longtemps échoue
-     * silencieusement au pire moment.
+     * ## Pourquoi il est mis en cache
+     *
+     * Les boîtes sont relevées toutes les deux minutes. Sans cache, chaque
+     * relève commencerait par un échange contre le point d'entrée de jetons de
+     * Google — trente par heure et par personne, pour un jeton valable une
+     * heure. Du gaspillage, et surtout une dépendance inutile à un service
+     * dont l'indisponibilité passagère suffirait à interrompre la relève.
+     *
+     * Cinquante minutes : Google en accorde soixante, et la marge couvre une
+     * relève commencée juste avant l'expiration.
      */
     public function accessToken(string $refreshToken): string
     {
+        $cle = 'arche.google.token.'.hash('sha256', $refreshToken);
+
+        $cache = Cache::get($cle);
+        if (is_string($cache) && $cache !== '') {
+            return $cache;
+        }
+
         $response = Http::asForm()->post(self::TOKEN_URL, [
             'refresh_token' => $refreshToken,
             'client_id' => $this->clientId(),
@@ -95,7 +113,22 @@ class GoogleOAuth
             throw new RuntimeException('Réponse de Google sans jeton d\'accès.');
         }
 
+        Cache::put($cle, $token, self::TOKEN_TTL);
+
         return $token;
+    }
+
+    /**
+     * Écarte le jeton mis en cache pour ce compte.
+     *
+     * À appeler quand Gmail refuse un appel : le jeton peut avoir été révoqué
+     * avant son expiration — mot de passe changé, accès retiré depuis le compte
+     * Google. Sans cet oubli, on rejouerait le même jeton mort pendant
+     * cinquante minutes.
+     */
+    public function forgetToken(string $refreshToken): void
+    {
+        Cache::forget('arche.google.token.'.hash('sha256', $refreshToken));
     }
 
     /**

@@ -1,6 +1,6 @@
 <?php
 
-use App\Modules\Mail\Jobs\RenewGmailWatches;
+use App\Modules\Mail\Jobs\PollGmailInboxes;
 use Illuminate\Foundation\Inspiring;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Schedule;
@@ -11,25 +11,30 @@ Artisan::command('inspire', function () {
 
 /*
 |--------------------------------------------------------------------------
-| Renouvellement des surveillances Gmail
+| Relève des boîtes Gmail
 |--------------------------------------------------------------------------
 |
-| Google limite une surveillance à sept jours. Non renouvelée, elle s'éteint
-| sans erreur, sans avis et sans trace : les notifications de courrier cessent
-| simplement d'arriver, et rien ne relie l'effet à la cause.
+| Toutes les deux minutes. C'est ce qui remplace la veille poussée de Gmail :
+| celle-ci exigeait d'accorder un rôle IAM à un compte de service de Google,
+| que la règle « Partage restreint au domaine » de l'organisation refuse.
 |
-| Quotidien, donc sept fois plus fréquent que nécessaire — un échec isolé, ou
-| même six jours d'affilée, reste sans conséquence. C'est délibéré : le coût
-| d'un appel de trop est nul, celui d'une extinction silencieuse se compte en
-| jours de recherche.
+| Le détour s'est révélé meilleur que l'obstacle. Une veille poussée expire au
+| bout de sept jours et, non renouvelée, s'éteint sans erreur ni trace — la
+| panne exacte de la file d'attente d'Arche, celle qui coûte des jours à
+| diagnostiquer. Une relève périodique n'a pas d'état caché : si elle s'arrête,
+| `last_polled_at` cesse d'avancer et l'écran de réglages le montre.
 |
-| `withoutOverlapping` évite qu'un renouvellement lent en croise un autre ;
-| `onOneServer` prépare le cas où un second conteneur de planification serait
-| ajouté, ce qui doublerait sinon les appels à Google.
+| Coût : environ 3 600 appels Gmail par jour pour cinq boîtes, très loin des
+| quotas. Le jeton d'accès étant mis en cache cinquante minutes, presque aucun
+| échange de jetons.
+|
+| `withoutOverlapping` : une relève lente ne doit pas en croiser une autre et
+| doubler les notifications. `onOneServer` prépare le cas d'un second
+| conteneur de planification.
 |
 */
-Schedule::job(new RenewGmailWatches)
-    ->dailyAt('03:00')
+Schedule::job(new PollGmailInboxes)
+    ->everyTwoMinutes()
     ->withoutOverlapping()
     ->onOneServer()
-    ->name('renouvellement-surveillances-gmail');
+    ->name('releve-boites-gmail');
