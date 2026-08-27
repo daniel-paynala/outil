@@ -37,6 +37,18 @@ Pour couvrir aussi ce terrain il faudrait un PostgreSQL local
 reste à faire, et c'est la seule chose qui manque pour que la suite soit
 représentative.
 
+## Migrations et SQL : pourquoi les deux existent
+
+`database/migrations/` ne sert **qu'à monter le schéma de cette suite** sur
+SQLite. La production, elle, est du PostgreSQL chez Supabase, et son schéma
+s'applique à la main depuis `database/sql/`.
+
+Ce n'est pas de la duplication gratuite : sans migrations, aucun test ne peut
+démarrer ; sans SQL, la production ne peut pas être mise à jour de la façon dont
+elle l'est réellement. Les deux décrivent la même chose, et **si l'une change,
+l'autre doit suivre** — la sonde `/api/monitoring/integrity` signale d'ailleurs
+toute table présente en base sans migration correspondante.
+
 ## L'authentification dans les tests
 
 `Tests\TestCase::authenticate()` crée un compte et forge un vrai JWT signé avec

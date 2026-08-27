@@ -175,14 +175,15 @@ GOOGLE_CLIENT_SECRET=<secret du client Web>
 GOOGLE_WORKSPACE_DOMAIN=paynala.com
 ```
 
-Puis appliquer la migration :
+### Base de données
 
-```bash
-docker exec arche-api php artisan migrate
-```
+Appliquer **`api/database/sql/2026_08_27_mail.sql`** dans l'éditeur SQL de
+Supabase. Il crée `google_accounts` et ajoute `notify_mail` à `users`.
 
-Elle crée `google_accounts` et ajoute `notify_mail` à `users`. Les migrations
-sont gardées : celles qui décrivent des tables déjà présentes ne font rien.
+> Les migrations Laravel du même nom existent aussi, mais elles ne servent qu'à
+> monter le schéma de la suite de tests sur SQLite. **La production s'applique en
+> SQL direct** — voir `api/TESTS.md`. Les deux décrivent la même chose ; si l'une
+> change, l'autre doit suivre.
 
 ### App — `mobile/env/dev.json`
 
