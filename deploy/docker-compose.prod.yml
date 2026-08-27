@@ -32,6 +32,27 @@
 x-php-env: &php-env
   CACHE_STORE: redis
 
+  # ## Pourquoi UTC et non Europe/Paris
+  #
+  # Les colonnes de date sont des `timestamp without time zone` : elles ne
+  # portent aucun fuseau, seulement des chiffres. Laravel y écrivait l'heure de
+  # Paris, alors que l'horloge de PostgreSQL est en UTC — deux heures d'écart
+  # entre ce que la base croit être l'heure et ce qu'elle contient.
+  #
+  # Entre Laravel et lui-même, c'était cohérent : il écrivait Paris, il relisait
+  # Paris. Le défaut n'apparaissait qu'à la sortie — **le temps réel de la
+  # messagerie**. Supabase y transmet la valeur brute de la colonne, sans
+  # fuseau ; l'app la lit comme de l'UTC, et un message reçu en direct
+  # s'affichait deux heures trop tôt, avant de se corriger seul au
+  # rafraîchissement, l'API sérialisant, elle, avec le décalage.
+  #
+  # Invisible en développement, où le fuseau est déjà UTC. C'est ce qui l'a fait
+  # passer inaperçu.
+  #
+  # La règle est de stocker en UTC et d'afficher en local — l'app formate déjà
+  # avec `toLocal()`. Rien à changer côté client.
+  APP_TIMEZONE: UTC
+
 services:
   api:
     build:
