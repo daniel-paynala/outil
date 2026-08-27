@@ -150,6 +150,65 @@ class CallTest extends TestCase
             ->assertJsonPath('reached', 0);
     }
 
+    public function test_sans_relais_configure_la_liste_est_vide(): void
+    {
+        // Les appels fonctionnent sans relais, simplement pas partout. Rendre
+        // une erreur ferait échouer un appel qui aurait pu aboutir.
+        config(['calls.turn_host' => null, 'calls.turn_secret' => null]);
+
+        [$_, $entetes] = $this->authenticate();
+
+        $this->getJson('/api/calls/turn', $entetes)
+            ->assertOk()
+            ->assertJsonPath('servers', []);
+    }
+
+    public function test_les_identifiants_de_relais_sont_temporaires(): void
+    {
+        // Un mot de passe figé serait extractible de l'APK, et le relais
+        // deviendrait un service gratuit pour qui l'a trouvé.
+        config([
+            'calls.turn_host' => 'arche.paynala.com',
+            'calls.turn_secret' => 'secret-de-test',
+        ]);
+
+        [$user, $entetes] = $this->authenticate();
+
+        $reponse = $this->getJson('/api/calls/turn', $entetes)->assertOk();
+        $serveur = $reponse->json('servers.0');
+
+        // Le nom porte l'expiration et l'identité : c'est ce que coturn
+        // vérifie, et ce qui rend le couple inutilisable ailleurs.
+        [$expiration, $qui] = explode(':', $serveur['username'], 2);
+        $this->assertSame($user->id, $qui);
+        $this->assertGreaterThan(time(), (int) $expiration);
+
+        // Le mot de passe est la signature du nom : recalculable par le
+        // serveur, jamais devinable par le client.
+        $this->assertSame(
+            base64_encode(hash_hmac('sha1', $serveur['username'], 'secret-de-test', true)),
+            $serveur['credential'],
+        );
+    }
+
+    public function test_le_relais_propose_un_repli_tcp(): void
+    {
+        // Certains réseaux d'entreprise bloquent l'UDP en totalité : sans
+        // repli, l'appel y échoue malgré le relais.
+        config([
+            'calls.turn_host' => 'arche.paynala.com',
+            'calls.turn_secret' => 'secret-de-test',
+        ]);
+
+        [$_, $entetes] = $this->authenticate();
+
+        $urls = $this->getJson('/api/calls/turn', $entetes)->json('servers.0.urls');
+
+        $this->assertTrue(collect($urls)->contains(fn ($u) => str_contains($u, 'transport=udp')));
+        $this->assertTrue(collect($urls)->contains(fn ($u) => str_contains($u, 'transport=tcp')));
+        $this->assertTrue(collect($urls)->contains(fn ($u) => str_starts_with($u, 'turns:')));
+    }
+
     public function test_un_jeton_mort_est_reconnu_comme_tel(): void
     {
         // Ces deux motifs sont définitifs : réessayer à chaque appel serait

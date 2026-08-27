@@ -72,6 +72,7 @@ Route::middleware('supabase.auth')->group(function () {
     // téléphone à l'autre en direct, la signalisation passe par Supabase.
     Route::post('calls/devices', [CallController::class, 'registerDevice']);
     Route::post('calls/ring', [CallController::class, 'ring']);
+    Route::get('calls/turn', [CallController::class, 'turnCredentials']);
 
     // Rattachement d'une boîte Google Workspace. Trois opérations seulement :
     // lire et écrire du courrier se fait de l'appareil à Gmail directement,

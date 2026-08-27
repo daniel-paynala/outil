@@ -101,6 +101,61 @@ class CallController extends Controller
         ]);
     }
 
+    /**
+     * Identifiants temporaires pour le serveur de relais.
+     *
+     * ## Pourquoi ne pas mettre un mot de passe dans l'application
+     *
+     * Il serait extractible de n'importe quel APK, et le relais deviendrait un
+     * service gratuit pour qui l'a trouvé — la bande passante d'un TURN se
+     * facture, pas le logiciel.
+     *
+     * coturn accepte à la place un mécanisme où le mot de passe est **calculé**
+     * : le nom d'utilisateur porte une date d'expiration, le mot de passe en
+     * est la signature par un secret que seul le serveur connaît. Le client
+     * reçoit un couple valable quelques heures et ne peut pas en fabriquer
+     * d'autre.
+     *
+     * Rendu vide plutôt qu'en erreur quand aucun relais n'est configuré : les
+     * appels fonctionnent sans, simplement pas partout, et l'app le signale
+     * déjà dans le monitoring.
+     */
+    public function turnCredentials(Request $request): JsonResponse
+    {
+        $secret = config('calls.turn_secret');
+        $hote = config('calls.turn_host');
+
+        if (empty($secret) || empty($hote)) {
+            return response()->json(['servers' => []]);
+        }
+
+        // Douze heures : bien plus qu'un appel, assez peu pour qu'un couple
+        // intercepté ne serve pas longtemps. L'app en redemande à chaque appel,
+        // le renouvellement est donc gratuit.
+        $expiration = now()->addHours(12)->timestamp;
+        $utilisateur = $expiration.':'.$this->userId($request);
+
+        return response()->json([
+            'servers' => [
+                [
+                    'urls' => [
+                        "turn:{$hote}:3478?transport=udp",
+                        // Certains réseaux d'entreprise bloquent l'UDP en
+                        // totalité. Sans repli TCP, l'appel y échoue malgré le
+                        // relais.
+                        "turn:{$hote}:3478?transport=tcp",
+                        "turns:{$hote}:5349?transport=tcp",
+                    ],
+                    'username' => $utilisateur,
+                    'credential' => base64_encode(
+                        hash_hmac('sha1', $utilisateur, $secret, true),
+                    ),
+                ],
+            ],
+            'expires_at' => $expiration,
+        ]);
+    }
+
     private function userId(Request $request): string
     {
         return $request->attributes->get('supabase_user_id')

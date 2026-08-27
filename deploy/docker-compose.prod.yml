@@ -144,6 +144,27 @@ services:
     networks:
       - arche
 
+  # Relais TURN pour les appels internes.
+  #
+  # ## Pourquoi `network_mode: host`
+  #
+  # Un relais TURN attribue dynamiquement un port UDP par flux. Publier une
+  # plage par la traduction d'adresses de Docker fonctionne mal — chaque paquet
+  # est réécrit, et coturn annonce alors des adresses que le pair ne peut pas
+  # joindre. Le mode hôte lui donne directement la pile réseau de la machine,
+  # ce qui est la configuration recommandée et la seule qui se comporte bien.
+  #
+  # La contrepartie est qu'il ignore le réseau `arche` : c'est sans importance,
+  # il ne parle à aucun autre conteneur.
+  coturn:
+    image: coturn/coturn:4.6-alpine
+    container_name: arche-coturn
+    network_mode: host
+    volumes:
+      - ./deploy/coturn.conf:/etc/coturn/turnserver.conf:ro
+    command: ["-c", "/etc/coturn/turnserver.conf"]
+    restart: unless-stopped
+
   # Redis porte à la fois la file d'attente et, depuis l'ajout de
   # `CACHE_STORE: redis`, le cache applicatif.
   #
