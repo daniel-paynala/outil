@@ -107,7 +107,12 @@ services:
     image: nginx:1.27-alpine
     container_name: arche-nginx
     ports:
-      - "8090:80"
+      # Lié à la boucle locale : seul le nginx de l'hôte, qui termine le TLS,
+      # peut atteindre ce port. Sans cette restriction, `http://<ip>:8090`
+      # resterait ouvert en clair à côté du HTTPS — et c'est le chemin en clair
+      # que trouvent les outils d'analyse, pas celui qu'on a pris soin de
+      # chiffrer. C'est aussi ce qui rend `trustProxies(at: '*')` correct.
+      - "127.0.0.1:8090:80"
     volumes:
       - ./deploy/nginx-docker.conf:/etc/nginx/conf.d/default.conf:ro
       - api-public:/var/www/html/public:ro
