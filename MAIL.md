@@ -25,7 +25,8 @@ redeviendrait obligatoire du jour au lendemain, et les connexions cesseraient.
 ## 1. Projet et API
 
 1. Console Google Cloud → créer un projet (ou réutiliser celui de l'organisation).
-2. **APIs & Services → Library** → activer **Gmail API**.
+2. **APIs & Services → Library** → activer **Gmail API** et
+   **Google Calendar API**.
 
 ## 2. Écran de consentement — *Google Auth Platform*
 
@@ -57,6 +58,7 @@ Bouton **« Ajouter ou supprimer des niveaux d'accès »**, puis descendre jusqu
 
 ```
 https://www.googleapis.com/auth/gmail.modify
+https://www.googleapis.com/auth/calendar.events
 https://www.googleapis.com/auth/userinfo.email
 ```
 
@@ -67,10 +69,23 @@ chemin** : les portées restreintes ne figurent pas dans la liste qu'on parcourt
 On peut chercher « gmail » longtemps sans rien trouver et croire que l'API n'est
 pas activée.
 
-`gmail.modify` couvre lecture, envoi, archivage et libellés, et met à la
-corbeille sans jamais effacer définitivement. Ne pas demander
-`https://mail.google.com/`, qui donnerait la suppression sans retour pour aucun
-usage supplémentaire.
+Chaque portée est la plus étroite qui fasse le travail. `gmail.modify` couvre
+lecture, envoi, archivage et libellés, et met à la corbeille sans jamais
+effacer définitivement — ne pas demander `https://mail.google.com/`, qui
+donnerait la suppression sans retour pour aucun usage supplémentaire.
+`calendar.events` couvre voir, répondre, créer et inviter, sans la main sur les
+paramètres des agendas ni sur leur partage que `calendar` accorderait.
+
+`calendar.events` est classée **sensible**, `gmail.modify` **restreinte** :
+pour une application publique, la première demande une vérification, la seconde
+y ajoute un audit de sécurité annuel. En Interne, ni l'une ni l'autre.
+
+> **Ajouter une portée plus tard oblige chacun à se reconnecter.** Un jeton de
+> rafraîchissement ne porte que ce qui a été accordé au moment de son émission :
+> les comptes déjà rattachés gardent les anciennes portées jusqu'à ce que leur
+> propriétaire se débranche et se rattache à nouveau depuis **Profil →
+> Courrier**. C'est le seul vrai coût d'un ajout, et la raison de les décider
+> ensemble.
 
 ## 3. Trois identifiants OAuth
 

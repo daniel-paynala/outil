@@ -63,6 +63,16 @@ return [
     */
     'scopes' => [
         'https://www.googleapis.com/auth/gmail.modify',
+
+        // Agenda : voir, répondre, créer, inviter. `calendar.events` et non
+        // `calendar` — celle-ci ajouterait la main sur les paramètres des
+        // agendas et sur leur partage, dont Arche n'a aucun usage.
+        //
+        // Classée « sensible » et non « restreinte » comme Gmail : pour une
+        // application publique, la différence est une vérification simple au
+        // lieu d'un audit de sécurité annuel. En Interne, ni l'une ni l'autre.
+        'https://www.googleapis.com/auth/calendar.events',
+
         'https://www.googleapis.com/auth/userinfo.email',
     ],
 ];
