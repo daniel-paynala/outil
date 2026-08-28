@@ -39,6 +39,31 @@ services:
     networks:
       - arche
 
+  # Le traitement de la file.
+  #
+  # Ce conteneur tournait en production sans figurer dans aucun fichier : il
+  # survivait aux redéploiements comme conteneur orphelin, avec l'image et la
+  # configuration de sa création — donc du vieux code, et un fuseau horaire que
+  # personne ne mettait plus à jour. Il était aussi à un `--remove-orphans`
+  # près de disparaître, et la file se serait arrêtée en silence.
+  #
+  # `--timeout=300` parce que la réindexation complète de Meilisearch dépasse
+  # la minute ; la valeur par défaut la tuerait en plein travail.
+  queue-worker:
+    build:
+      context: ./api
+    container_name: arche-queue-worker
+    env_file:
+      - ./api/.env
+    volumes:
+      - api-storage:/var/www/html/storage
+    command: ["php", "artisan", "queue:work", "--tries=3", "--timeout=300", "--sleep=3"]
+    depends_on:
+      - redis
+    restart: unless-stopped
+    networks:
+      - arche
+
   nginx:
     image: nginx:1.27-alpine
     container_name: arche-nginx
