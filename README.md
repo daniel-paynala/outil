@@ -5,6 +5,7 @@ Super-plateforme interne regroupant tous les outils de gestion de projets dev.
 ## Stack
 
 - **Frontend** : Next.js 15 (App Router, TypeScript, Tailwind) — déployé sur Cloudflare Pages
+- **Mobile** : Flutter 3.35 (Riverpod, go_router, Dio) — iOS et Android
 - **Backend API** : Laravel 11 (PHP 8.4) — hébergeur classique
 - **Base de données** : Supabase (PostgreSQL)
 - **Auth** : Supabase Auth (JWT)
@@ -15,8 +16,9 @@ Super-plateforme interne regroupant tous les outils de gestion de projets dev.
 
 ```
 outil/
-├── api/    # Laravel 11 — API backend
-├── web/    # Next.js 15 — frontend
+├── api/      # Laravel 11 — API backend
+├── web/      # Next.js 15 — frontend
+├── mobile/   # Flutter — app iOS / Android (voir mobile/README.md)
 └── docker-compose.yml   # Redis + Meilisearch pour le dev local
 ```
 
@@ -53,6 +55,12 @@ php artisan serve
 cd ../web
 npm install
 npm run dev
+
+# Mobile
+cd ../mobile
+cp env/dev.example.json env/dev.json   # puis renseigner SUPABASE_ANON_KEY
+flutter pub get
+flutter run --dart-define-from-file=env/dev.json
 ```
 
 ## Rôles

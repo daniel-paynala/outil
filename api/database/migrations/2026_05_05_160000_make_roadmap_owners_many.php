@@ -28,13 +28,17 @@ return new class extends Migration
             $table->index('user_id');
         });
 
-        // Migration des owner_id existants
-        DB::statement("
+        // Reprise des `owner_id` existants.
+        //
+        // `CURRENT_TIMESTAMP` et non `NOW()` : SQLite ne connaît pas la seconde,
+        // et refuse la requête à l'analyse — donc même sur une base vide, où
+        // elle n'aurait pourtant rien à reprendre.
+        DB::statement(<<<'SQL'
             INSERT INTO roadmap_item_owners (roadmap_item_id, user_id, created_at, updated_at)
-            SELECT id, owner_id, NOW(), NOW()
+            SELECT id, owner_id, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
             FROM roadmap_items
             WHERE owner_id IS NOT NULL
-        ");
+        SQL);
 
         Schema::table('roadmap_items', function (Blueprint $table) {
             $table->dropForeign(['owner_id']);

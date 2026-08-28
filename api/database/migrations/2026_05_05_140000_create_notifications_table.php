@@ -29,7 +29,20 @@ return new class extends Migration
             $table->index(['user_id', 'created_at']);
         });
 
-        // RLS : chaque user ne voit que ses propres notifications via Supabase Realtime
+        // Sécurité au niveau ligne et publication Realtime : deux notions que
+        // seul Postgres connaît. Les migrations servent aussi à bâtir le schéma
+        // SQLite des tests, où ces instructions ne se contentent pas d'être
+        // sans effet — elles ne s'analysent pas, et font échouer la suite
+        // entière avant qu'un seul test ne s'exécute.
+        //
+        // Ce qui compte en production reste appliqué là où c'est vrai ; ce que
+        // les tests vérifient, ce sont les contrôleurs, pas les politiques.
+        if (DB::connection()->getDriverName() !== 'pgsql') {
+            return;
+        }
+
+        // Chaque utilisateur ne voit que ses propres notifications quand elles
+        // lui arrivent par Supabase Realtime, qui court-circuite l'API.
         DB::statement('ALTER TABLE notifications ENABLE ROW LEVEL SECURITY;');
         DB::statement(<<<'SQL'
             CREATE POLICY "users_select_own_notifications"
@@ -44,16 +57,18 @@ return new class extends Migration
             USING (user_id = auth.uid());
         SQL);
 
-        // Active la publication Realtime sur la table
         DB::statement('ALTER PUBLICATION supabase_realtime ADD TABLE notifications;');
     }
 
     public function down(): void
     {
-        try {
-            DB::statement('ALTER PUBLICATION supabase_realtime DROP TABLE notifications;');
-        } catch (\Throwable $e) {
-            // ignore
+        if (DB::connection()->getDriverName() === 'pgsql') {
+            try {
+                DB::statement('ALTER PUBLICATION supabase_realtime DROP TABLE notifications;');
+            } catch (\Throwable $e) {
+                // La publication a pu être retirée à la main, ou ne jamais avoir
+                // existé sur une base neuve. Rien à réparer dans les deux cas.
+            }
         }
         Schema::dropIfExists('notifications');
     }

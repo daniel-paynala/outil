@@ -1,3 +1,19 @@
+# ⚠ CE FICHIER N'EST PAS CELUI QUI TOURNE EN PRODUCTION.
+#
+# La production utilise `docker-compose.yml`, à la racine du dépôt. Celui-ci
+# décrit une topologie parallèle qui n'a jamais été déployée — et il a coûté un
+# diagnostic entier : `APP_TIMEZONE: UTC` y est déclaré depuis mai, ce qui a
+# laissé croire pendant des semaines que le fuseau était réglé alors que le
+# serveur lisait `api/.env`, où il valait `Europe/Paris`.
+#
+# Ce qu'il garde d'utile et qu'on ne trouve nulle part ailleurs : la définition
+# du service `coturn`, le relais des appels. Tant qu'elle n'a pas rejoint le
+# compose racine, ne pas supprimer ce fichier.
+#
+# Ce qu'il faut en retenir : la seule source de vérité pour ce qui tourne est
+# `docker-compose.yml` à la racine, et la configuration de l'API vient de
+# `api/.env` — pas d'une variable d'environnement déclarée ici.
+
 # Déploiement Arche en production.
 #
 # Ce fichier était jusqu'ici absent du dépôt : le serveur est passé de
