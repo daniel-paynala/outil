@@ -4,3 +4,11 @@
 *.log
 .env
 .env.local
+
+# Le client mobile vit dans son propre dépôt — privé, contrairement à
+# celui-ci : github.com/daniel-paynala/mobile-arche
+#
+# Sans cette règle, `git add -A` l'ajouterait ici comme sous-module fantôme
+# (un gitlink vers un commit que ce dépôt ne sait pas retrouver), et il
+# apparaîtrait indéfiniment comme non suivi dans `git status`.
+mobile/
