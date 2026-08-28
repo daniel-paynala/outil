@@ -8,6 +8,7 @@ use App\Modules\Mail\Services\GmailReader;
 use App\Modules\Mail\Services\GoogleOAuth;
 use App\Modules\Messagerie\Services\PushSender;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use Tests\TestCase;
@@ -382,5 +383,118 @@ class MailTest extends TestCase
 
         $this->assertSame('400', $compte->fresh()->history_id);
         $this->assertNull($compte->fresh()->last_error);
+    }
+
+    // ── Le courrier sans objet ──────────────────────────────────────────
+
+    /**
+     * Un courrier dont l'en-tête `Subject:` est présent mais vide.
+     *
+     * C'est le cas qui a coûté une notification silencieuse en production :
+     * `Collection::get('subject', '(sans objet)')` ne pose sa valeur par défaut
+     * que si la clé est **absente**. Présente et vide, elle rend `''` — puis
+     * OneSignal refuse la notification entière, et personne n'apprend jamais
+     * que le courrier est arrivé.
+     */
+    private function fakeCourrierSansObjet(): void
+    {
+        Http::fake([
+            'oauth2.googleapis.com/token' => Http::response(['access_token' => 'x'], 200),
+            'gmail.googleapis.com/*/history*' => Http::response([
+                'historyId' => '500',
+                'history' => [['messagesAdded' => [['message' => ['id' => 'm1']]]]],
+            ], 200),
+            'gmail.googleapis.com/*/messages/m1*' => Http::response([
+                'threadId' => 't1',
+                'payload' => ['headers' => [
+                    ['name' => 'From', 'value' => 'Fidèle Ondo <fidele@paynala.com>'],
+                    ['name' => 'Subject', 'value' => ''],
+                ]],
+            ], 200),
+            'api.onesignal.com/*' => Http::response(['id' => 'n1'], 200),
+        ]);
+    }
+
+    private function relever(string $userId): void
+    {
+        GoogleAccount::create([
+            'user_id' => $userId,
+            'email' => 'daniel@paynala.com',
+            'refresh_token' => 'jeton',
+            'history_id' => '100',
+        ]);
+
+        (new PollGmailInboxes)->handle(
+            app(GmailReader::class),
+            app(GoogleOAuth::class),
+            app(PushSender::class),
+        );
+    }
+
+    public function test_un_courrier_sans_objet_notifie_quand_meme(): void
+    {
+        config(['onesignal.app_id' => 'app', 'onesignal.rest_key' => 'cle']);
+        $this->fakeCourrierSansObjet();
+
+        [$user] = $this->authenticate();
+        $this->relever($user->id);
+
+        Http::assertSent(function ($request) {
+            if (! str_contains($request->url(), 'onesignal')) {
+                return false;
+            }
+
+            // Le corps est ce qu'OneSignal exige ; vide, il rejette tout.
+            return $request->data()['contents']['en'] === '(sans objet)';
+        });
+    }
+
+    public function test_un_expediteur_illisible_ne_vide_pas_le_titre(): void
+    {
+        config(['onesignal.app_id' => 'app', 'onesignal.rest_key' => 'cle']);
+
+        Http::fake([
+            'oauth2.googleapis.com/token' => Http::response(['access_token' => 'x'], 200),
+            'gmail.googleapis.com/*/history*' => Http::response([
+                'historyId' => '500',
+                'history' => [['messagesAdded' => [['message' => ['id' => 'm1']]]]],
+            ], 200),
+            'gmail.googleapis.com/*/messages/m1*' => Http::response([
+                'threadId' => 't1',
+                'payload' => ['headers' => [
+                    ['name' => 'From', 'value' => ''],
+                    ['name' => 'Subject', 'value' => 'Facture de juillet'],
+                ]],
+            ], 200),
+            'api.onesignal.com/*' => Http::response(['id' => 'n1'], 200),
+        ]);
+
+        [$user] = $this->authenticate();
+        $this->relever($user->id);
+
+        Http::assertSent(function ($request) {
+            if (! str_contains($request->url(), 'onesignal')) {
+                return false;
+            }
+
+            return $request->data()['headings']['en'] === 'Expéditeur inconnu';
+        });
+    }
+
+    public function test_un_push_sans_corps_est_refuse_avant_l_envoi(): void
+    {
+        // La garde de dernier recours : quel que soit l'appelant, un corps vide
+        // ne part pas — et la sonde nomme la cause au lieu de renvoyer la
+        // phrase anglaise d'OneSignal, qui ne désigne personne.
+        config(['onesignal.app_id' => 'app', 'onesignal.rest_key' => 'cle']);
+        Http::fake();
+
+        app(PushSender::class)->send(['u1'], 'Un titre', '   ');
+
+        Http::assertNothingSent();
+
+        $trace = Cache::get(PushSender::LAST_ATTEMPT_KEY);
+        $this->assertFalse($trace['ok']);
+        $this->assertStringContainsString('Corps vide', $trace['error']);
     }
 }

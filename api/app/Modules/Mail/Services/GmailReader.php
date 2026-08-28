@@ -155,12 +155,24 @@ class GmailReader
             return null;
         }
 
+        // Vide n'est pas absent, et c'est toute la difficulté : un courrier
+        // porte très souvent un en-tête `Subject:` présent mais sans valeur.
+        // La valeur par défaut d'un `get()` ne se déclenche alors pas, le sujet
+        // arrive vide, et OneSignal refuse la notification entière — « Message
+        // Notifications must have Any/English language content ». Résultat : un
+        // courrier reçu dont personne n'est jamais prévenu.
         return [
             'id' => $id,
             'threadId' => (string) $response->json('threadId'),
-            'from' => $this->displayName($expediteur),
-            'subject' => (string) $entetes->get('subject', '(sans objet)'),
+            'from' => $this->nonVide($this->displayName($expediteur), 'Expéditeur inconnu'),
+            'subject' => $this->nonVide((string) $entetes->get('subject', ''), '(sans objet)'),
         ];
+    }
+
+    /** Une valeur d'en-tête utilisable, ou son remplacement. */
+    private function nonVide(string $valeur, string $repli): string
+    {
+        return trim($valeur) === '' ? $repli : trim($valeur);
     }
 
     /**

@@ -63,6 +63,25 @@ class PushSender
             return;
         }
 
+        // OneSignal refuse une notification sans corps, et le fait avec un
+        // message qui ne dit rien de la cause : « Message Notifications must
+        // have Any/English language content ». On l'a payé une fois — un
+        // courrier sans objet ne notifiait personne, et la sonde renvoyait
+        // cette phrase anglaise sans qu'on puisse remonter à l'appelant.
+        //
+        // On refuse donc nous-mêmes, en nommant ce qui manque. Aucun appelant
+        // ne peut plus réintroduire silencieusement ce défaut.
+        if (trim($body) === '') {
+            $this->record(
+                false,
+                count($userIds),
+                null,
+                "Corps vide — notification « {$title} » non envoyée.",
+            );
+
+            return;
+        }
+
         try {
             $response = Http::withHeaders([
                 // Format courant de l'API OneSignal — « Basic » est l'ancien
