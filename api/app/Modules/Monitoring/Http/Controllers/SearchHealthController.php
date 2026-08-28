@@ -11,6 +11,7 @@ use App\Modules\Tasks\Models\Card;
 use App\Modules\Vault\Models\VaultEntry;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Meilisearch\Client;
 use Throwable;
@@ -115,8 +116,29 @@ class SearchHealthController extends Controller
         ], 202);
     }
 
-    public function show(): JsonResponse
+    /**
+     * État du moteur d'indexation.
+     *
+     * ## Deux réponses pour une seule route
+     *
+     * La route reste ouverte : c'est justement quand l'authentification tombe
+     * qu'on a besoin de lire une sonde. Mais elle n'a pas à livrer la même
+     * chose à tout le monde.
+     *
+     * Elle le faisait, et disait le contraire dans son propre commentaire :
+     * « ne divulgue que des compteurs ». En réalité elle rendait le volume
+     * d'activité de l'entreprise — combien de tâches, combien de documents,
+     * combien de secrets au coffre — plus l'adresse interne du moteur et le
+     * texte brut de ses exceptions, à qui passait sans jeton.
+     *
+     * Un inconnu reçoit maintenant un état : le moteur répond ou non, chaque
+     * index est sain ou non. De quoi constater une panne, pas de quoi
+     * renseigner qui que ce soit sur l'entreprise. L'équipe, elle, garde les
+     * chiffres — ce sont eux qui permettent de réparer.
+     */
+    public function show(Request $request): JsonResponse
     {
+        $identifie = $request->attributes->has('user');
         $driver = config('scout.driver');
 
         // Sans Meilisearch il n'y a pas d'index à comparer : Scout retombe sur
@@ -140,15 +162,20 @@ class SearchHealthController extends Controller
             );
             $stats = $client->stats();
         } catch (Throwable $e) {
+            // Le message d'exception nomme l'hôte, le port, parfois l'entête
+            // d'authentification refusé. Indispensable pour réparer, à ne pas
+            // laisser traîner pour autant.
             return response()->json([
                 'engine' => 'meilisearch',
                 'reachable' => false,
                 'status' => 'down',
                 'indexes' => [],
-                'error' => $e->getMessage(),
-                'hint' => "Le moteur ne répond pas à l'adresse "
-                    .config('scout.meilisearch.host').'. Vérifier que le '
-                    .'conteneur Meilisearch tourne.',
+                'error' => $identifie ? $e->getMessage() : null,
+                'hint' => $identifie
+                    ? "Le moteur ne répond pas à l'adresse "
+                        .config('scout.meilisearch.host').'. Vérifier que le '
+                        .'conteneur Meilisearch tourne.'
+                    : "Le moteur d'indexation ne répond pas.",
             ]);
         }
 
@@ -163,8 +190,10 @@ class SearchHealthController extends Controller
             'engine' => 'meilisearch',
             'reachable' => true,
             'status' => $this->worst($indexes),
-            'indexes' => $indexes,
-            'hint' => $this->hint($indexes),
+            'indexes' => $identifie ? $indexes : $this->sansChiffres($indexes),
+            // L'indication nomme la commande à lancer : utile à qui peut la
+            // lancer, inventaire de nos rouages pour les autres.
+            'hint' => $identifie ? $this->hint($indexes) : null,
         ]);
     }
 
@@ -257,6 +286,27 @@ class SearchHealthController extends Controller
      *
      * @param  array<int, array<string, mixed>>  $indexes
      */
+    /**
+     * Le même verdict, sans les volumes.
+     *
+     * On garde `status` : c'est ce qui permet de constater qu'un index va mal.
+     * On retire `documents`, `rows` et `missing_filters`, qui disent
+     * respectivement combien l'entreprise produit, combien elle stocke, et
+     * comment son moteur est réglé.
+     *
+     * `index` part aussi : le nom technique révèle le préfixe de déploiement.
+     *
+     * @param  array<int, array<string, mixed>>  $indexes
+     * @return array<int, array<string, mixed>>
+     */
+    private function sansChiffres(array $indexes): array
+    {
+        return array_map(
+            fn (array $i) => ['label' => $i['label'], 'status' => $i['status']],
+            $indexes,
+        );
+    }
+
     private function hint(array $indexes): ?string
     {
         $states = array_column($indexes, 'status');

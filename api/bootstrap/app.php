@@ -2,6 +2,7 @@
 
 use App\Http\Middleware\EnsureAdmin;
 use App\Http\Middleware\EnsureSupabaseAuth;
+use App\Http\Middleware\ResolveSupabaseAuth;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
@@ -36,6 +37,7 @@ return Application::configure(basePath: dirname(__DIR__))
 
         $middleware->alias([
             'supabase.auth' => EnsureSupabaseAuth::class,
+            'supabase.maybe' => ResolveSupabaseAuth::class,
             'admin' => EnsureAdmin::class,
         ]);
     })

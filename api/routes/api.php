@@ -47,12 +47,17 @@ Route::get('/health', function () {
     ]);
 });
 
-// Sonde de la file d'attente, volontairement hors authentification : elle ne
-// divulgue que des compteurs, et doit rester consultable quand c'est
-// justement l'authentification qui est en panne.
-Route::get('/monitoring/queue', [QueueHealthController::class, 'show']);
-Route::get('/monitoring/search', [SearchHealthController::class, 'show']);
-Route::get('/monitoring/push', [PushHealthController::class, 'show']);
+// Sondes consultables sans authentification : c'est justement quand celle-ci
+// tombe qu'on a besoin de les lire.
+//
+// `supabase.maybe` reconnaît l'appelant sans jamais le refuser. Les sondes
+// répondent donc à tout le monde, mais ne détaillent que pour l'équipe — la
+// file ne rend que des compteurs, la recherche rendait bien davantage.
+Route::middleware('supabase.maybe')->group(function () {
+    Route::get('/monitoring/queue', [QueueHealthController::class, 'show']);
+    Route::get('/monitoring/search', [SearchHealthController::class, 'show']);
+    Route::get('/monitoring/push', [PushHealthController::class, 'show']);
+});
 
 // Intégrité de l'installation : versions, configuration, schéma, stockage.
 // Authentifiée — elle nomme des adresses de services et l'état du disque, qui

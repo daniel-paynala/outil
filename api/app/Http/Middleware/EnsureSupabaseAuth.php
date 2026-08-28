@@ -18,14 +18,12 @@ class EnsureSupabaseAuth
 
     public function handle(Request $request, Closure $next): Response
     {
-        $token = $request->bearerToken();
-
-        if (! $token) {
+        if (! $request->bearerToken()) {
             return response()->json(['error' => 'Unauthorized'], 401);
         }
 
         try {
-            $decoded = $this->verify($token);
+            $this->attach($request);
         } catch (\Throwable $e) {
             return response()->json([
                 'error' => 'Invalid token',
@@ -33,14 +31,34 @@ class EnsureSupabaseAuth
             ], 401);
         }
 
-        $claims = (array) $decoded;
+        return $next($request);
+    }
+
+    /**
+     * Vérifie le jeton et attache l'identité à la requête.
+     *
+     * Séparé de `handle` pour que `ResolveSupabaseAuth` puisse reconnaître un
+     * appelant sans pouvoir le refuser — voir la note de cette classe-là.
+     *
+     * Rend `false` quand aucun jeton n'est présenté ; lève quand un jeton est
+     * présenté mais invalide, parce que ces deux situations n'appellent pas la
+     * même réponse.
+     */
+    protected function attach(Request $request): bool
+    {
+        $token = $request->bearerToken();
+        if (! $token) {
+            return false;
+        }
+
+        $claims = (array) $this->verify($token);
         $user = $this->sync->syncFromClaims($claims);
 
         $request->attributes->set('supabase_user', $claims);
         $request->attributes->set('supabase_user_id', $claims['sub'] ?? null);
         $request->attributes->set('user', $user);
 
-        return $next($request);
+        return true;
     }
 
     private function verify(string $token): object

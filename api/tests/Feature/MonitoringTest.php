@@ -169,4 +169,80 @@ class MonitoringTest extends TestCase
             ->assertOk()
             ->assertJsonStructure(['failed_jobs', 'log', 'status']);
     }
+
+    /**
+     * La sonde de recherche est ouverte à tous, et c'est voulu : on doit
+     * pouvoir la lire quand l'authentification elle-même est en panne. Ce
+     * qu'elle rend alors ne doit pour autant rien apprendre sur l'entreprise.
+     */
+    public function test_la_sonde_de_recherche_repond_sans_jeton(): void
+    {
+        $this->getJson('/api/monitoring/search')
+            ->assertOk()
+            ->assertJsonStructure(['engine', 'reachable', 'status', 'indexes']);
+    }
+
+    public function test_la_sonde_ne_chiffre_rien_pour_un_inconnu(): void
+    {
+        $reponse = $this->getJson('/api/monitoring/search')->assertOk();
+
+        foreach ($reponse->json('indexes') as $index) {
+            // `documents` et `rows` disent combien l'entreprise produit et
+            // stocke — dont le nombre de secrets au coffre.
+            $this->assertArrayNotHasKey('documents', $index);
+            $this->assertArrayNotHasKey('rows', $index);
+            // `missing_filters` décrit le réglage du moteur, `index` porte le
+            // préfixe de déploiement.
+            $this->assertArrayNotHasKey('missing_filters', $index);
+            $this->assertArrayNotHasKey('index', $index);
+            // L'état reste : c'est lui qui permet de constater la panne.
+            $this->assertArrayHasKey('label', $index);
+            $this->assertArrayHasKey('status', $index);
+        }
+    }
+
+    public function test_la_sonde_ne_nomme_ni_l_hote_ni_ses_exceptions(): void
+    {
+        $reponse = $this->getJson('/api/monitoring/search')->assertOk();
+
+        // Le message d'exception nomme l'hôte, le port, parfois l'entête
+        // d'authentification refusé.
+        $this->assertNull($reponse->json('error'));
+
+        // Une indication reste permise — il en faut bien une pour dire que le
+        // moteur ne répond pas. Ce qu'elle n'a pas le droit de contenir, c'est
+        // l'adresse du service ou la commande à lancer, qui décrivent nos
+        // rouages à quelqu'un qui ne peut de toute façon rien réparer.
+        $indication = (string) $reponse->json('hint');
+        $hote = (string) config('scout.meilisearch.host');
+
+        $this->assertStringNotContainsString($hote, $indication);
+        $this->assertStringNotContainsString('artisan', $indication);
+        $this->assertStringNotContainsString('scout:', $indication);
+    }
+
+    public function test_la_sonde_rend_le_detail_a_qui_se_presente(): void
+    {
+        [$user, $entetes] = $this->authenticate();
+
+        $reponse = $this->getJson('/api/monitoring/search', $entetes)->assertOk();
+
+        // Sans ces chiffres, l'écran Monitoring ne peut plus dire « 19 indexés
+        // pour 20 en base », qui est tout l'intérêt de la sonde.
+        foreach ($reponse->json('indexes') as $index) {
+            $this->assertArrayHasKey('documents', $index);
+            $this->assertArrayHasKey('rows', $index);
+            $this->assertArrayHasKey('missing_filters', $index);
+        }
+    }
+
+    public function test_un_jeton_invalide_ne_fait_pas_echouer_la_sonde(): void
+    {
+        // `supabase.maybe` reconnaît sans refuser : un jeton expiré doit
+        // dégrader vers la réponse anonyme, et non produire un 401 sur une
+        // route dont l'intérêt est de survivre à la panne d'authentification.
+        $this->getJson('/api/monitoring/search', [
+            'Authorization' => 'Bearer jeton.parfaitement.faux',
+        ])->assertOk();
+    }
 }
