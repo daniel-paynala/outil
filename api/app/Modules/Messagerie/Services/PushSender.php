@@ -35,11 +35,18 @@ class PushSender
      * @param  array<int, string>  $userIds  identifiants Supabase
      * @param  array<string, mixed>  $data  charge utile lue par l'app au tap
      */
+    /**
+     * @param  array<int, string>  $userIds  identifiants Supabase
+     * @param  array<string, mixed>  $data  charge utile lue par l'app au tap
+     * @param  array<string, mixed>  $options  champs OneSignal supplémentaires,
+     *                                         fusionnés dans la charge envoyée
+     */
     public function send(
         array $userIds,
         string $title,
         string $body,
         array $data = [],
+        array $options = [],
     ): void {
         $appId = config('onesignal.app_id');
         $key = config('onesignal.rest_key');
@@ -75,6 +82,7 @@ class PushSender
                     // l'ouverture de la conversation.
                     'ios_badge_type' => 'Increase',
                     'ios_badge_count' => 1,
+                    ...$options,
                 ]);
 
             if ($response->failed()) {

@@ -6,6 +6,8 @@ use App\Modules\Calls\Models\CallLog;
 use App\Modules\Calls\Models\VoipDevice;
 use App\Modules\Calls\Services\ApnsVoipSender;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Str;
 use Tests\TestCase;
 
 /**
@@ -128,11 +130,12 @@ class CallTest extends TestCase
         ], $entetes)->assertStatus(422);
     }
 
-    public function test_seuls_les_appareils_ios_sont_sonnes(): void
+    public function test_un_jeton_android_ne_part_jamais_chez_apple(): void
     {
-        // Android n'a pas besoin de PushKit : un message de haute priorité
-        // suffit, et cette voie n'est pas encore branchée. Tenter un push VoIP
-        // vers Apple avec un jeton Android échouerait à chaque appel.
+        // Chaque plateforme a sa voie : PushKit pour iOS, une notification de
+        // haute priorité pour Android. Présenter un jeton Android à Apple
+        // échouerait à chaque appel, et l'échec ressemblerait à une panne
+        // d'APNs plutôt qu'à une erreur d'aiguillage.
         [$_, $entetes] = $this->authenticate();
         [$cible, $__] = $this->authenticate();
 
@@ -142,13 +145,19 @@ class CallTest extends TestCase
             'platform' => 'android',
         ]);
 
+        $this->mock(ApnsVoipSender::class)
+            ->shouldNotReceive('ring');
+
+        Http::fake(['*' => Http::response(['id' => 'n1'], 200)]);
+
         $this->postJson('/api/calls/ring', [
             'call_id' => '11111111-1111-4111-8111-111111111111',
             'to_user_id' => $cible->id,
         ], $entetes)
             ->assertOk()
             ->assertJsonPath('devices', 1)
-            ->assertJsonPath('reached', 0);
+            // Atteint, mais par l'autre voie.
+            ->assertJsonPath('reached', 1);
     }
 
     public function test_sans_relais_configure_la_liste_est_vide(): void
@@ -282,5 +291,86 @@ class CallTest extends TestCase
         $this->assertTrue($envoyeur->isTokenDead('Unregistered'));
         // Celui-ci est temporaire : le réessai a du sens.
         $this->assertFalse($envoyeur->isTokenDead('TooManyProviderTokenUpdates'));
+    }
+
+    // ── La sonnerie Android ─────────────────────────────────────────────
+
+    public function test_un_appareil_android_est_sonne_par_notification(): void
+    {
+        [$appelant, $entetes] = $this->authenticate();
+        [$appele] = $this->authenticate();
+
+        VoipDevice::create([
+            'id' => (string) Str::uuid(),
+            'user_id' => $appele->id,
+            'token' => 'jeton-android',
+            'platform' => 'android',
+        ]);
+
+        Http::fake(['*' => Http::response(['id' => 'n1'], 200)]);
+
+        $this->postJson('/api/calls/ring', [
+            'call_id' => (string) Str::uuid(),
+            'to_user_id' => $appele->id,
+        ], $entetes)->assertOk()->assertJson(['devices' => 1, 'reached' => 1]);
+
+        Http::assertSent(function ($request) use ($appele) {
+            $corps = $request->data();
+
+            // Le filtre de plateforme est la seule chose qui empêche un
+            // destinataire équipé des deux de sonner deux fois pour un appel.
+            return $corps['isIos'] === false
+                && $corps['priority'] === 10
+                && $corps['data']['type'] === 'call'
+                && $corps['include_aliases']['external_id'] === [$appele->id];
+        });
+    }
+
+    public function test_la_notification_d_appel_expire_avec_la_sonnerie(): void
+    {
+        [$appelant, $entetes] = $this->authenticate();
+        [$appele] = $this->authenticate();
+
+        VoipDevice::create([
+            'id' => (string) Str::uuid(),
+            'user_id' => $appele->id,
+            'token' => 'jeton-android',
+            'platform' => 'android',
+        ]);
+
+        Http::fake(['*' => Http::response(['id' => 'n1'], 200)]);
+
+        $this->postJson('/api/calls/ring', [
+            'call_id' => (string) Str::uuid(),
+            'to_user_id' => $appele->id,
+        ], $entetes)->assertOk();
+
+        // Une notification livrée après la sonnerie annonce un appel qui
+        // n'existe plus : pire que pas de notification du tout.
+        Http::assertSent(fn ($request) => $request->data()['ttl'] === 45);
+    }
+
+    public function test_un_appareil_ios_ne_recoit_pas_la_notification(): void
+    {
+        [$appelant, $entetes] = $this->authenticate();
+        [$appele] = $this->authenticate();
+
+        VoipDevice::create([
+            'id' => (string) Str::uuid(),
+            'user_id' => $appele->id,
+            'token' => str_repeat('a', 64),
+            'platform' => 'ios',
+        ]);
+
+        Http::fake();
+
+        $this->postJson('/api/calls/ring', [
+            'call_id' => (string) Str::uuid(),
+            'to_user_id' => $appele->id,
+        ], $entetes)->assertOk();
+
+        // Un iPhone est sonné par PushKit. Lui envoyer en plus une
+        // notification le ferait sonner deux fois pour un seul appel.
+        Http::assertNotSent(fn ($request) => str_contains($request->url(), 'onesignal'));
     }
 }

@@ -7,6 +7,7 @@ use App\Models\User;
 use App\Modules\Calls\Models\CallLog;
 use App\Modules\Calls\Models\VoipDevice;
 use App\Modules\Calls\Services\ApnsVoipSender;
+use App\Modules\Messagerie\Services\PushSender;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
@@ -21,7 +22,10 @@ use Illuminate\Http\Request;
  */
 class CallController extends Controller
 {
-    public function __construct(private readonly ApnsVoipSender $apns) {}
+    public function __construct(
+        private readonly ApnsVoipSender $apns,
+        private readonly PushSender $push,
+    ) {}
 
     /**
      * Enregistre le jeton VoIP de cet appareil.
@@ -76,9 +80,13 @@ class CallController extends Controller
         $appareils = VoipDevice::where('user_id', $data['to_user_id'])->get();
         $atteints = 0;
 
+        // Android sonne par notification, pas par PushKit — voir `ringAndroid`.
+        if ($appareils->contains(fn (VoipDevice $a) => $a->platform !== 'ios')) {
+            $this->ringAndroid($data, $moi);
+            $atteints++;
+        }
+
         foreach ($appareils as $appareil) {
-            // Seul iOS a besoin d'un push VoIP : sur Android, un message de
-            // haute priorité suffit, et cette voie n'est pas encore branchée.
             if ($appareil->platform !== 'ios') {
                 continue;
             }
@@ -100,6 +108,59 @@ class CallController extends Controller
             'devices' => $appareils->count(),
             'reached' => $atteints,
         ]);
+    }
+
+    /**
+     * Fait sonner un Android par notification.
+     *
+     * ## Pourquoi pas le même chemin qu'iOS
+     *
+     * Android n'a pas de PushKit : rien ne permet de réveiller l'application
+     * pour qu'elle affiche l'écran d'appel du système. Le vrai équivalent
+     * demanderait `firebase_messaging` aux côtés de OneSignal, donc deux SDK
+     * qui se disputent le même jeton FCM. Ce n'est pas ce qu'on fait ici.
+     *
+     * Ce qu'on fait : une notification de la plus haute priorité, avec la
+     * sonnerie et la vibration. Ce n'est pas l'écran d'appel du système, mais
+     * cela remplace le silence — et le silence était le vrai problème.
+     *
+     * ## Les réglages, et pourquoi chacun
+     *
+     * `priority: 10` et `ttl: 45` : un appel n'a de sens que pendant qu'il
+     * sonne. Passé la sonnerie, une notification livrée en retard annonce un
+     * appel qui n'existe plus, ce qui est pire que rien.
+     *
+     * `isIos: false` : le destinataire peut avoir un iPhone **et** un Android.
+     * Sans ce filtre, l'iPhone recevrait à la fois le push VoIP et cette
+     * notification, et sonnerait deux fois pour un seul appel.
+     *
+     * @param  array<string, mixed>  $data
+     */
+    private function ringAndroid(array $data, User $appelant): void
+    {
+        $nom = $appelant->name ?: explode('@', $appelant->email)[0];
+
+        $this->push->send(
+            userIds: [$data['to_user_id']],
+            title: 'Appel entrant',
+            body: "{$nom} vous appelle",
+            data: [
+                'type' => 'call',
+                'call_id' => $data['call_id'],
+                'caller_id' => $appelant->id,
+                'caller_name' => $nom,
+                'caller_email' => $appelant->email,
+            ],
+            options: [
+                'priority' => 10,
+                'ttl' => 45,
+                'isIos' => false,
+                'android_sound' => 'default',
+                // Le badge n'a rien à voir avec un appel : l'incrémenter
+                // laisserait une pastille qu'aucun écran ne vient effacer.
+                'ios_badge_type' => 'None',
+            ],
+        );
     }
 
     /**
