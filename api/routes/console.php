@@ -38,3 +38,9 @@ Schedule::job(new PollGmailInboxes)
     ->withoutOverlapping()
     ->onOneServer()
     ->name('releve-boites-gmail');
+
+// Digest des notifications email de documents : flush toutes les minutes
+// (l'option --debounce dans la commande gère le délai effectif de 5 min).
+Schedule::command('documents:flush-notifications')
+    ->everyMinute()
+    ->withoutOverlapping(5);

@@ -31,9 +31,13 @@ export const CATEGORIES: {
 
 export default function VaultClient({
   projectId,
+  currentUserId,
+  projectOwnerId,
   initialEntries,
 }: {
   projectId: string;
+  currentUserId: string;
+  projectOwnerId: string;
   initialEntries: VaultEntry[];
 }) {
   const [entries, setEntries] = useState<VaultEntry[]>(initialEntries);
@@ -90,6 +94,19 @@ export default function VaultClient({
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2">
                       <p className="text-sm font-medium truncate">{e.name}</p>
+                      {e.visibility === "restricted" && (
+                        <span
+                          title={`Accès restreint à ${
+                            (e.allowed_users?.length ?? 0) + 1
+                          } personne${
+                            (e.allowed_users?.length ?? 0) + 1 > 1 ? "s" : ""
+                          }`}
+                          className="inline-flex shrink-0 text-[var(--muted)]"
+                          aria-label="Accès restreint"
+                        >
+                          <Lock size={12} strokeWidth={2} />
+                        </span>
+                      )}
                       {expired && (
                         <span className="text-[10px] uppercase tracking-wider rounded px-1.5 py-0.5 bg-[var(--color-danger)]/10 text-[var(--color-danger)]">
                           Expiré
@@ -119,6 +136,7 @@ export default function VaultClient({
       {creating && (
         <NewEntryForm
           projectId={projectId}
+          currentUserId={currentUserId}
           onClose={() => setCreating(false)}
           onCreated={(entry) => {
             setEntries((prev) => [entry, ...prev]);
@@ -132,6 +150,9 @@ export default function VaultClient({
         <EntryDrawer
           key={openId}
           entryId={openId}
+          projectId={projectId}
+          currentUserId={currentUserId}
+          projectOwnerId={projectOwnerId}
           onClose={() => setOpenId(null)}
           onUpdated={(entry) =>
             setEntries((prev) =>

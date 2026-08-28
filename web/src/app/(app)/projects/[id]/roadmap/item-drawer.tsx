@@ -19,6 +19,9 @@ import type {
   RoadmapItem,
 } from "@/lib/types";
 import { apiFetch } from "@/lib/api/client";
+import { useToast } from "@/core/toast/toast-context";
+import OwnersPicker from "./owners-picker";
+import DateInput from "./date-input";
 
 const HORIZONS: RoadmapHorizon[] = ["now", "next", "later", "done"];
 const EFFORTS: RoadmapEffort[] = ["S", "M", "L", "XL"];
@@ -40,6 +43,7 @@ export default function ItemDrawer({
   onUpdated: (i: RoadmapItem) => void;
   onDeleted: () => void;
 }) {
+  const toast = useToast();
   const [detail, setDetail] = useState<RoadmapItem | null>(null);
   const [saving, setSaving] = useState(false);
 
@@ -63,27 +67,54 @@ export default function ItemDrawer({
     const prev = detail;
     setDetail({ ...detail, ...body } as RoadmapItem);
     setSaving(true);
-    const res = await apiFetch(`/api/roadmap-items/${itemId}`, {
-      method: "PATCH",
-      body: JSON.stringify(body),
-    });
-    setSaving(false);
-    if (res.ok) {
-      const updated = (await res.json()) as RoadmapItem;
-      setDetail(updated);
-      onUpdated(updated);
-    } else {
+    try {
+      const res = await apiFetch(`/api/roadmap-items/${itemId}`, {
+        method: "PATCH",
+        body: JSON.stringify(body),
+      });
+      setSaving(false);
+      if (res.ok) {
+        const updated = (await res.json()) as RoadmapItem;
+        setDetail(updated);
+        onUpdated(updated);
+      } else {
+        setDetail(prev);
+        toast.error(
+          "Mise à jour impossible",
+          (await res.text()) || `Erreur ${res.status}`,
+        );
+      }
+    } catch (err) {
+      setSaving(false);
       setDetail(prev);
+      toast.error(
+        "Mise à jour impossible",
+        err instanceof Error ? err.message : String(err),
+      );
     }
   }
 
   async function handleDelete() {
-    if (!confirm(`Supprimer l'item "${detail?.title}" ?`)) return;
-    const res = await apiFetch(`/api/roadmap-items/${itemId}`, {
-      method: "DELETE",
-    });
-    if (res.ok) {
-      onDeleted();
+    const title = detail?.title;
+    if (!confirm(`Supprimer l'item "${title}" ?`)) return;
+    try {
+      const res = await apiFetch(`/api/roadmap-items/${itemId}`, {
+        method: "DELETE",
+      });
+      if (res.ok) {
+        toast.success("Supprimé", title);
+        onDeleted();
+      } else {
+        toast.error(
+          "Suppression impossible",
+          (await res.text()) || `Erreur ${res.status}`,
+        );
+      }
+    } catch (err) {
+      toast.error(
+        "Suppression impossible",
+        err instanceof Error ? err.message : String(err),
+      );
     }
   }
 
@@ -160,27 +191,28 @@ export default function ItemDrawer({
               </select>
             </FieldRow>
 
-            <FieldRow icon={UserIcon} label="Owner">
-              <select
-                value={detail.owner_id ?? ""}
-                onChange={(e) => patch({ owner_id: e.target.value || null })}
-                className="w-full rounded border border-[var(--border)] bg-[var(--background)] px-2 py-1 text-sm"
-              >
-                <option value="">—</option>
-                {members.map((m) => (
-                  <option key={m.id} value={m.id}>
-                    {m.email}
-                  </option>
-                ))}
-              </select>
+            <FieldRow icon={UserIcon} label="Owners">
+              <OwnersPicker
+                members={members}
+                selected={(detail.owners ?? []).map((o) => o.id)}
+                onChange={(next) => patch({ owner_ids: next, owners: members.filter((m) => next.includes(m.id)) })}
+              />
+            </FieldRow>
+
+            <FieldRow icon={CalendarDays} label="Début">
+              <DateInput
+                value={detail.start_date}
+                onCommit={(next) => patch({ start_date: next })}
+                ariaLabel="Date de début"
+              />
             </FieldRow>
 
             <FieldRow icon={CalendarDays} label="Échéance">
-              <input
-                type="date"
-                value={detail.target_date ? detail.target_date.slice(0, 10) : ""}
-                onChange={(e) => patch({ target_date: e.target.value || null })}
-                className="rounded border border-[var(--border)] bg-[var(--background)] px-2 py-1 text-sm"
+              <DateInput
+                value={detail.target_date}
+                onCommit={(next) => patch({ target_date: next })}
+                min={detail.start_date ? detail.start_date.slice(0, 10) : undefined}
+                ariaLabel="Date d'échéance"
               />
             </FieldRow>
 

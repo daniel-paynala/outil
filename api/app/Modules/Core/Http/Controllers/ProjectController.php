@@ -117,7 +117,15 @@ class ProjectController extends Controller
 
         $project->load(['members', 'creator']);
 
-        return response()->json($project);
+        $userId = $this->userId($request);
+        $user = $request->attributes->get('user');
+        $isPlatformAdmin = $user && $user->role === 'admin';
+        $isCreator = $project->created_by === $userId;
+
+        $payload = $project->toArray();
+        $payload['can_delete'] = $isPlatformAdmin || $isCreator;
+
+        return response()->json($payload);
     }
 
     public function update(Request $request, Project $project): JsonResponse
@@ -139,10 +147,37 @@ class ProjectController extends Controller
 
     public function destroy(Request $request, Project $project): JsonResponse
     {
-        $this->ensureOwner($request, $project);
+        $this->ensureCanDelete($request, $project);
+
+        $name = $project->name;
         $project->delete();
 
+        $this->activity->logGlobal(
+            $this->userId($request),
+            'project.deleted',
+            null,
+            $name,
+            ['project_id' => $project->id],
+        );
+
         return response()->json(null, 204);
+    }
+
+    /**
+     * Suppression réservée à : admin plateforme OU créateur du projet.
+     * Les autres owners du projet ne peuvent pas supprimer.
+     */
+    private function ensureCanDelete(Request $request, Project $project): void
+    {
+        $userId = $this->userId($request);
+        $user = $request->attributes->get('user');
+
+        $isPlatformAdmin = $user && $user->role === 'admin';
+        $isCreator = $project->created_by === $userId;
+
+        if (! $isPlatformAdmin && ! $isCreator) {
+            abort(403, 'Only platform admin or project creator can delete this project');
+        }
     }
 
     private function userId(Request $request): string

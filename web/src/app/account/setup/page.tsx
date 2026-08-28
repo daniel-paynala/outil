@@ -5,12 +5,14 @@ import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { Loader2 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
+import { useToast } from "@/core/toast/toast-context";
 
 type Status = "loading" | "ready" | "no-session" | "error";
 
 export default function AccountSetupPage() {
   const router = useRouter();
   const supabase = createClient();
+  const toast = useToast();
 
   const [status, setStatus] = useState<Status>("loading");
   const [email, setEmail] = useState<string | null>(null);
@@ -63,9 +65,11 @@ export default function AccountSetupPage() {
     const { error: err } = await supabase.auth.updateUser({ password });
     if (err) {
       setError(err.message);
+      toast.error("Activation impossible", err.message);
       setSubmitting(false);
       return;
     }
+    toast.success("Compte activé", "Mot de passe défini.");
     router.replace("/dashboard");
     router.refresh();
   }

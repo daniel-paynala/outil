@@ -16,6 +16,7 @@ import {
 import { clsx } from "clsx";
 import type { DocPage, DocRevision } from "@/lib/types";
 import { apiFetch } from "@/lib/api/client";
+import { useToast } from "@/core/toast/toast-context";
 
 type ViewMode = "edit" | "preview" | "split";
 
@@ -27,6 +28,7 @@ export default function DocEditor({
   page: DocPage;
 }) {
   const router = useRouter();
+  const toast = useToast();
 
   const [title, setTitle] = useState(page.title);
   const [content, setContent] = useState(page.content ?? "");
@@ -46,16 +48,29 @@ export default function DocEditor({
   const save = useCallback(async () => {
     if (!dirty) return;
     setSaving(true);
-    const res = await apiFetch(`/api/docs/${page.id}`, {
-      method: "PATCH",
-      body: JSON.stringify({ title, content }),
-    });
-    setSaving(false);
-    if (res.ok) {
-      setLastSavedAt(new Date());
-      router.refresh();
+    try {
+      const res = await apiFetch(`/api/docs/${page.id}`, {
+        method: "PATCH",
+        body: JSON.stringify({ title, content }),
+      });
+      setSaving(false);
+      if (res.ok) {
+        setLastSavedAt(new Date());
+        router.refresh();
+      } else {
+        toast.error(
+          "Enregistrement impossible",
+          (await res.text()) || `Erreur ${res.status}`,
+        );
+      }
+    } catch (err) {
+      setSaving(false);
+      toast.error(
+        "Enregistrement impossible",
+        err instanceof Error ? err.message : String(err),
+      );
     }
-  }, [dirty, title, content, page.id, router]);
+  }, [dirty, title, content, page.id, router, toast]);
 
   // Cmd/Ctrl + S
   useEffect(() => {
@@ -71,10 +86,23 @@ export default function DocEditor({
 
   async function handleDelete() {
     if (!confirm(`Supprimer la page "${page.title}" ?`)) return;
-    const res = await apiFetch(`/api/docs/${page.id}`, { method: "DELETE" });
-    if (res.ok) {
-      router.push(`/projects/${projectId}/docs`);
-      router.refresh();
+    try {
+      const res = await apiFetch(`/api/docs/${page.id}`, { method: "DELETE" });
+      if (res.ok) {
+        toast.success("Supprimée", `Page « ${page.title} »`);
+        router.push(`/projects/${projectId}/docs`);
+        router.refresh();
+      } else {
+        toast.error(
+          "Suppression impossible",
+          (await res.text()) || `Erreur ${res.status}`,
+        );
+      }
+    } catch (err) {
+      toast.error(
+        "Suppression impossible",
+        err instanceof Error ? err.message : String(err),
+      );
     }
   }
 
@@ -210,6 +238,7 @@ function RevisionsDrawer({
   onClose: () => void;
   onRestored: () => void;
 }) {
+  const toast = useToast();
   const [revs, setRevs] = useState<DocRevision[] | null>(null);
   const [previewing, setPreviewing] = useState<DocRevision | null>(null);
 
@@ -236,10 +265,25 @@ function RevisionsDrawer({
   async function restore(rev: DocRevision) {
     if (!confirm(`Restaurer la version du ${formatDate(rev.created_at)} ?`))
       return;
-    const res = await apiFetch(`/api/docs/${pageId}/restore/${rev.id}`, {
-      method: "POST",
-    });
-    if (res.ok) onRestored();
+    try {
+      const res = await apiFetch(`/api/docs/${pageId}/restore/${rev.id}`, {
+        method: "POST",
+      });
+      if (res.ok) {
+        toast.success("Restaurée", `Version du ${formatDate(rev.created_at)}`);
+        onRestored();
+      } else {
+        toast.error(
+          "Restauration impossible",
+          (await res.text()) || `Erreur ${res.status}`,
+        );
+      }
+    } catch (err) {
+      toast.error(
+        "Restauration impossible",
+        err instanceof Error ? err.message : String(err),
+      );
+    }
   }
 
   return (

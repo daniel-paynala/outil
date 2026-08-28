@@ -10,6 +10,8 @@ import type {
   RoadmapItem,
 } from "@/lib/types";
 import { apiFetch } from "@/lib/api/client";
+import { useToast } from "@/core/toast/toast-context";
+import OwnersPicker from "./owners-picker";
 
 const HORIZONS: RoadmapHorizon[] = ["now", "next", "later", "done"];
 const EFFORTS: RoadmapEffort[] = ["S", "M", "L", "XL"];
@@ -31,12 +33,14 @@ export default function NewItemForm({
   const [description, setDescription] = useState("");
   const [horizon, setHorizon] = useState<RoadmapHorizon>("later");
   const [effort, setEffort] = useState<RoadmapEffort | "">("");
+  const [startDate, setStartDate] = useState("");
   const [targetDate, setTargetDate] = useState("");
   const [releaseId, setReleaseId] = useState("");
-  const [ownerId, setOwnerId] = useState("");
+  const [ownerIds, setOwnerIds] = useState<string[]>([]);
   const [tagsInput, setTagsInput] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const toast = useToast();
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -53,22 +57,34 @@ export default function NewItemForm({
       description: description || null,
       horizon,
       effort: effort || null,
+      start_date: startDate || null,
       target_date: targetDate || null,
       release_id: releaseId || null,
-      owner_id: ownerId || null,
+      owner_ids: ownerIds.length > 0 ? ownerIds : null,
       tags: tags.length > 0 ? tags : null,
     };
 
-    const res = await apiFetch(`/api/projects/${projectId}/roadmap`, {
-      method: "POST",
-      body: JSON.stringify(body),
-    });
-    setLoading(false);
-    if (!res.ok) {
-      setError(await res.text());
-      return;
+    try {
+      const res = await apiFetch(`/api/projects/${projectId}/roadmap`, {
+        method: "POST",
+        body: JSON.stringify(body),
+      });
+      setLoading(false);
+      if (!res.ok) {
+        const txt = await res.text();
+        setError(txt);
+        toast.error("Création impossible", txt || `Erreur ${res.status}`);
+        return;
+      }
+      const created = (await res.json()) as RoadmapItem;
+      toast.success("Créé", created.title);
+      onCreated(created);
+    } catch (err) {
+      setLoading(false);
+      const msg = err instanceof Error ? err.message : String(err);
+      setError(msg);
+      toast.error("Création impossible", msg);
     }
-    onCreated((await res.json()) as RoadmapItem);
   }
 
   return (
@@ -142,11 +158,25 @@ export default function NewItemForm({
           </select>
         </div>
         <div>
-          <label className="text-xs font-medium">Échéance</label>
+          <label className="text-xs font-medium">
+            Début <span className="text-[var(--muted)] text-[10px]">(opt.)</span>
+          </label>
+          <input
+            type="date"
+            value={startDate}
+            onChange={(e) => setStartDate(e.target.value)}
+            className="w-full mt-1 rounded-md border border-[var(--border)] bg-[var(--background)] px-2 py-2 text-sm"
+          />
+        </div>
+        <div>
+          <label className="text-xs font-medium">
+            Échéance <span className="text-[var(--muted)] text-[10px]">(opt.)</span>
+          </label>
           <input
             type="date"
             value={targetDate}
             onChange={(e) => setTargetDate(e.target.value)}
+            min={startDate || undefined}
             className="w-full mt-1 rounded-md border border-[var(--border)] bg-[var(--background)] px-2 py-2 text-sm"
           />
         </div>
@@ -169,19 +199,14 @@ export default function NewItemForm({
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
         <div>
-          <label className="text-xs font-medium">Owner</label>
-          <select
-            value={ownerId}
-            onChange={(e) => setOwnerId(e.target.value)}
-            className="w-full mt-1 rounded-md border border-[var(--border)] bg-[var(--background)] px-2 py-2 text-sm"
-          >
-            <option value="">—</option>
-            {members.map((m) => (
-              <option key={m.id} value={m.id}>
-                {m.email}
-              </option>
-            ))}
-          </select>
+          <label className="text-xs font-medium">
+            Owners <span className="text-[var(--muted)] text-[10px]">(plusieurs possibles)</span>
+          </label>
+          <OwnersPicker
+            members={members}
+            selected={ownerIds}
+            onChange={setOwnerIds}
+          />
         </div>
         <div>
           <label className="text-xs font-medium">

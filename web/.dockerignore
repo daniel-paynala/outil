@@ -1,0 +1,9 @@
+node_modules
+.next
+.open-next
+.wrangler
+.git
+.env*
+!.env.local
+README.md
+*.log

@@ -108,3 +108,59 @@ html { -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility; 
 @media (prefers-color-scheme: dark) {
   .prose-doc code { background: var(--color-neutral-800); }
 }
+
+/* ─── Toast animation ─────────────────────────────────────────────────── */
+@keyframes toast-in {
+  from { opacity: 0; transform: translateX(8px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+.animate-toast-in { animation: toast-in 0.2s ease-out; }
+
+/* ─── Page transition fade-in ─────────────────────────────────────────── */
+@keyframes page-fade-in {
+  from { opacity: 0; transform: translateY(4px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.page-fade-in {
+  animation: page-fade-in 0.18s ease-out;
+}
+
+/* Réduit l'animation pour les utilisateurs qui le demandent */
+@media (prefers-reduced-motion: reduce) {
+  .page-fade-in { animation: none; }
+}
+
+/* ─── Smooth scroll ───────────────────────────────────────────────────── */
+html { scroll-behavior: smooth; }
+
+/* ─── Custom scrollbars (webkit + firefox) ────────────────────────────── */
+/* Track noir, thumb rouge brand. S'applique sur tout l'app. */
+
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-brand-red) #000;
+}
+
+::-webkit-scrollbar {
+  height: 10px;
+  width: 10px;
+}
+
+::-webkit-scrollbar-track {
+  background: #000;
+  border-radius: 0;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--color-brand-red);
+  border-radius: 6px;
+  border: 2px solid #000; /* gap visuel autour du thumb */
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--color-brand-red-600);
+}
+
+::-webkit-scrollbar-corner {
+  background: #000;
+}

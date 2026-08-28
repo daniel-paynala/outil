@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import { clsx } from "clsx";
 import type { ProjectMember, RoadmapItem } from "@/lib/types";
 import { HORIZON_LABEL } from "./horizon-meta";
+import Avatar from "@/core/ui/avatar";
 
 type SortKey = "title" | "horizon" | "owner" | "target_date" | "effort" | "release";
 
@@ -29,7 +30,7 @@ export default function ViewList({
       (i) =>
         i.title.toLowerCase().includes(q) ||
         i.tags?.some((t) => t.toLowerCase().includes(q)) ||
-        i.owner?.email.toLowerCase().includes(q) ||
+        i.owners?.some((o) => o.email.toLowerCase().includes(q)) ||
         i.release?.name.toLowerCase().includes(q),
     );
   }, [items, filter]);
@@ -136,8 +137,18 @@ export default function ViewList({
                   )}
                 </td>
                 <td className="px-3 py-2.5">
-                  {i.owner ? (
-                    <span className="text-xs">{i.owner.email}</span>
+                  {i.owners && i.owners.length > 0 ? (
+                    <div className="flex flex-wrap gap-1">
+                      {i.owners.map((o) => (
+                        <span
+                          key={o.id}
+                          className="inline-flex items-center gap-1 text-[11px] text-[var(--muted)]"
+                          title={o.email}
+                        >
+                          <Avatar user={o} size="xs" />
+                        </span>
+                      ))}
+                    </div>
                   ) : (
                     <span className="text-xs text-[var(--muted)]">—</span>
                   )}
@@ -217,7 +228,7 @@ function key(i: RoadmapItem, k: SortKey): string | number | null {
     case "horizon":
       return HORIZON_ORDER[i.horizon];
     case "owner":
-      return i.owner?.email.toLowerCase() ?? null;
+      return (i.owners ?? [])[0]?.email.toLowerCase() ?? null;
     case "target_date":
       return i.target_date ?? null;
     case "effort":

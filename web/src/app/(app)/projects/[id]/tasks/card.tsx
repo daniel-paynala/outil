@@ -6,6 +6,8 @@ import { Trash2, Link2, GitBranch, Calendar, Clock, MessageSquare } from "lucide
 import { clsx } from "clsx";
 import type { CardSummary } from "@/lib/types";
 import { apiFetch } from "@/lib/api/client";
+import { useToast } from "@/core/toast/toast-context";
+import Avatar from "@/core/ui/avatar";
 
 export default function BoardCard({
   card,
@@ -18,6 +20,7 @@ export default function BoardCard({
   onOpen?: () => void;
   overlay?: boolean;
 }) {
+  const toast = useToast();
   const {
     attributes,
     listeners,
@@ -37,8 +40,23 @@ export default function BoardCard({
     e.stopPropagation();
     if (!onDelete) return;
     if (!confirm("Supprimer cette carte ?")) return;
-    const res = await apiFetch(`/api/cards/${card.id}`, { method: "DELETE" });
-    if (res.ok) onDelete();
+    try {
+      const res = await apiFetch(`/api/cards/${card.id}`, { method: "DELETE" });
+      if (res.ok) {
+        onDelete();
+        toast.success("Supprimée", card.title);
+      } else {
+        toast.error(
+          "Suppression impossible",
+          (await res.text()) || `Erreur ${res.status}`,
+        );
+      }
+    } catch (err) {
+      toast.error(
+        "Suppression impossible",
+        err instanceof Error ? err.message : String(err),
+      );
+    }
   }
 
   const dueState = dueDateState(card.due_date);
@@ -155,12 +173,7 @@ export default function BoardCard({
 
         <div className="flex items-start gap-1 shrink-0">
           {card.assignee && (
-            <span
-              className="size-6 rounded-full bg-[var(--color-neutral-300)] dark:bg-[var(--color-neutral-600)] flex items-center justify-center text-[10px] font-medium"
-              title={card.assignee.email}
-            >
-              {card.assignee.email.charAt(0).toUpperCase()}
-            </span>
+            <Avatar user={card.assignee} size="sm" />
           )}
           {onDelete && (
             <button

@@ -4,8 +4,6 @@ import {
   AlertCircle,
   ArrowRight,
   BookOpen,
-  CalendarClock,
-  Code2,
   FolderKanban,
   GitBranch,
   KeyRound,
@@ -19,6 +17,7 @@ import {
   ScrollText,
   Timer,
   Activity,
+  CalendarClock,
   type LucideIcon,
 } from "lucide-react";
 import { clsx } from "clsx";
@@ -40,9 +39,7 @@ const GLOBAL_MODULES: ModuleEntry[] = [
   { name: "Projets", description: "Tous tes projets et leurs membres", icon: FolderKanban, href: "/projects", scope: "global", status: "active" },
   { name: "Mes tâches", description: "Tâches assignées cross-projets, classées par échéance", icon: ListChecks, href: "/my-tasks", scope: "global", status: "active" },
   { name: "Recherche unifiée", description: "Cartes, docs, décisions, secrets, fichiers", icon: Search, href: "/search", scope: "global", status: "active" },
-  { name: "Snippets", description: "Bibliothèque de code réutilisable", icon: Code2, scope: "global", status: "soon" },
-  { name: "Agenda", description: "Vue calendrier cross-projets", icon: CalendarClock, scope: "global", status: "soon" },
-  { name: "Notifications", description: "PRs à reviewer, mentions, alertes", icon: Bell, scope: "global", status: "soon" },
+  { name: "Notifications", description: "Assignations, mises à jour, mentions — temps réel", icon: Bell, href: "/notifications", scope: "global", status: "active" },
 ];
 
 const PROJECT_MODULES: ModuleEntry[] = [

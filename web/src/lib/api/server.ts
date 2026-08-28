@@ -17,7 +17,8 @@ export async function apiFetch(path: string, init?: RequestInit) {
     headers.set("Content-Type", "application/json");
   }
 
-  return fetch(`${process.env.NEXT_PUBLIC_API_URL}${path}`, {
+  const baseUrl = process.env.API_URL_INTERNAL || process.env.NEXT_PUBLIC_API_URL || "";
+  return fetch(`${baseUrl}${path}`, {
     ...init,
     headers,
     cache: "no-store",

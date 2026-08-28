@@ -1,14 +1,22 @@
 <?php
 
 use App\Modules\Activity\Http\Controllers\ActivityController;
+use App\Modules\Activity\Http\Controllers\AdminAuditController;
 use App\Modules\Adr\Http\Controllers\DecisionController;
 use App\Modules\Calls\Http\Controllers\CallController;
 use App\Modules\Core\Http\Controllers\AdminUserController;
+use App\Modules\Core\Http\Controllers\AvatarController;
+use App\Modules\Core\Http\Controllers\InvitationController;
+use App\Modules\Core\Http\Controllers\PasswordResetController;
 use App\Modules\Core\Http\Controllers\PreferencesController;
 use App\Modules\Core\Http\Controllers\ProjectController;
+use App\Modules\Core\Http\Controllers\ProjectMemberController;
+use App\Modules\Core\Http\Controllers\ProjectStatsController;
 use App\Modules\Core\Http\Controllers\UserDirectoryController;
+use App\Modules\Core\Http\Controllers\UserSearchController;
 use App\Modules\Docs\Http\Controllers\DocController;
 use App\Modules\Files\Http\Controllers\ProjectFileController;
+use App\Modules\Files\Http\Controllers\ProjectFolderController;
 use App\Modules\Github\Http\Controllers\GithubController;
 use App\Modules\Mail\Http\Controllers\MailController;
 use App\Modules\Messagerie\Http\Controllers\ConversationController;
@@ -18,9 +26,11 @@ use App\Modules\Monitoring\Http\Controllers\PushHealthController;
 use App\Modules\Monitoring\Http\Controllers\QueueHealthController;
 use App\Modules\Monitoring\Http\Controllers\SearchHealthController;
 use App\Modules\Monitoring\Http\Controllers\ServerErrorsController;
+use App\Modules\Notifications\Http\Controllers\NotificationController;
 use App\Modules\Roadmap\Http\Controllers\RoadmapController;
 use App\Modules\Search\Http\Controllers\SearchController;
 use App\Modules\Tasks\Http\Controllers\BoardController;
+use App\Modules\Tasks\Http\Controllers\CardAttachmentController;
 use App\Modules\Tasks\Http\Controllers\CommentController;
 use App\Modules\Tasks\Http\Controllers\LabelController;
 use App\Modules\Tasks\Http\Controllers\MyTasksController;
@@ -67,6 +77,14 @@ Route::middleware(['supabase.auth', 'admin'])->get(
     [ServerErrorsController::class, 'show'],
 );
 
+// Public — invitation flow (custom token, hors auth Supabase)
+Route::get('/invite/{token}', [InvitationController::class, 'show']);
+Route::post('/invite/{token}/activate', [InvitationController::class, 'activate']);
+
+// Public — password reset (réutilise les invitation_tokens et la page /invite)
+Route::post('/auth/forgot-password', [PasswordResetController::class, 'request']);
+
+
 Route::middleware('supabase.auth')->group(function () {
     // Appels internes. Le serveur ne fait que sonner : la voix va d'un
     // téléphone à l'autre en direct, la signalisation passe par Supabase.
@@ -91,6 +109,27 @@ Route::middleware('supabase.auth')->group(function () {
         ]);
     });
 
+    Route::post('/me/avatar', [AvatarController::class, 'update']);
+    Route::delete('/me/avatar', [AvatarController::class, 'destroy']);
+
+    Route::patch('/me/settings', function (Request $request) {
+        /** @var \App\Models\User $user */
+        $user = $request->attributes->get('user');
+        if (! $user) {
+            abort(401);
+        }
+
+        $data = $request->validate([
+            'name' => ['sometimes', 'nullable', 'string', 'max:120'],
+            'notify_task_assignment_email' => ['sometimes', 'boolean'],
+            'notify_project_document_email' => ['sometimes', 'boolean'],
+        ]);
+
+        $user->update($data);
+
+        return response()->json($user->fresh());
+    });
+
     Route::apiResource('projects', ProjectController::class);
 
     // Annuaire de l'équipe — nécessaire pour désigner quelqu'un (discussion,
@@ -101,12 +140,32 @@ Route::middleware('supabase.auth')->group(function () {
     Route::get('me/preferences', [PreferencesController::class, 'show']);
     Route::patch('me/preferences', [PreferencesController::class, 'update']);
 
+    // Project stats (overview)
+    Route::get('projects/{project}/stats', [ProjectStatsController::class, 'show']);
+
+    // Project members
+    Route::get('projects/{project}/members', [ProjectMemberController::class, 'index']);
+    Route::post('projects/{project}/members', [ProjectMemberController::class, 'store']);
+    Route::patch('projects/{project}/members/{user}', [ProjectMemberController::class, 'update']);
+    Route::delete('projects/{project}/members/{user}', [ProjectMemberController::class, 'destroy']);
+
+    // User search (autocomplete invite)
+    Route::get('users/search', [UserSearchController::class, 'search']);
+
+    // Notifications
+    Route::get('notifications', [NotificationController::class, 'index']);
+    Route::get('notifications/unread-count', [NotificationController::class, 'unreadCount']);
+    Route::post('notifications/{id}/read', [NotificationController::class, 'markRead']);
+    Route::post('notifications/read-all', [NotificationController::class, 'markAllRead']);
+    Route::delete('notifications/{id}', [NotificationController::class, 'destroy']);
+
     Route::get('me/tasks', [MyTasksController::class, 'index']);
     Route::get('me/archive', [MyTasksController::class, 'archive']);
     Route::get('search', [SearchController::class, 'index']);
 
     // Tasks / Board
     Route::get('projects/{project}/columns', [BoardController::class, 'index']);
+    Route::get('projects/{project}/cards-timeline', [BoardController::class, 'timeline']);
     Route::post('projects/{project}/columns', [BoardController::class, 'storeColumn']);
     Route::patch('columns/{column}', [BoardController::class, 'updateColumn']);
     Route::delete('columns/{column}', [BoardController::class, 'destroyColumn']);
@@ -123,6 +182,12 @@ Route::middleware('supabase.auth')->group(function () {
     Route::delete('cards/{card}/dependencies/{dep}', [BoardController::class, 'removeDependency']);
 
     // Card comments
+    // Card attachments (photos + documents)
+    Route::get('cards/{card}/attachments', [CardAttachmentController::class, 'index']);
+    Route::post('cards/{card}/attachments', [CardAttachmentController::class, 'store']);
+    Route::get('attachments/{attachment}', [CardAttachmentController::class, 'show']);
+    Route::delete('attachments/{attachment}', [CardAttachmentController::class, 'destroy']);
+
     Route::get('cards/{card}/comments', [CommentController::class, 'index']);
     Route::post('cards/{card}/comments', [CommentController::class, 'store']);
     Route::patch('comments/{comment}', [CommentController::class, 'update']);
@@ -140,7 +205,14 @@ Route::middleware('supabase.auth')->group(function () {
     Route::get('projects/{project}/files', [ProjectFileController::class, 'index']);
     Route::post('projects/{project}/files', [ProjectFileController::class, 'store']);
     Route::get('files/{file}', [ProjectFileController::class, 'show']);
+    Route::patch('files/{file}', [ProjectFileController::class, 'update']);
     Route::delete('files/{file}', [ProjectFileController::class, 'destroy']);
+
+    // Project folders (arborescence)
+    Route::get('projects/{project}/folders', [ProjectFolderController::class, 'index']);
+    Route::post('projects/{project}/folders', [ProjectFolderController::class, 'store']);
+    Route::patch('folders/{folder}', [ProjectFolderController::class, 'update']);
+    Route::delete('folders/{folder}', [ProjectFolderController::class, 'destroy']);
 
     // Documentation (markdown pages with light revisions)
     Route::get('projects/{project}/docs', [DocController::class, 'index']);
@@ -193,7 +265,9 @@ Route::middleware('supabase.auth')->group(function () {
         Route::get('users', [AdminUserController::class, 'index']);
         Route::post('users', [AdminUserController::class, 'store']);
         Route::patch('users/{user}', [AdminUserController::class, 'update']);
+        Route::post('users/{user}/resend-invite', [AdminUserController::class, 'resendInvite']);
         Route::delete('users/{user}', [AdminUserController::class, 'destroy']);
+        Route::get('audit-logs', [AdminAuditController::class, 'index']);
     });
 
     // Messagerie interne — conversations et messages.

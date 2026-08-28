@@ -3,17 +3,25 @@
 namespace App\Modules\Tasks\Http\Controllers;
 
 use App\Http\Controllers\Controller;
+use App\Mail\TaskAssigned;
+use App\Models\User;
 use App\Modules\Activity\Services\ActivityLogger;
+use App\Modules\Notifications\Services\NotificationService;
 use App\Modules\Core\Models\Project;
 use App\Modules\Tasks\Models\Card;
 use App\Modules\Tasks\Models\Column;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Mail;
 
 class BoardController extends Controller
 {
-    public function __construct(private readonly ActivityLogger $activity) {}
+    public function __construct(
+        private readonly ActivityLogger $activity,
+        private readonly NotificationService $notify,
+    ) {}
 
     public function index(Request $request, Project $project): JsonResponse
     {
@@ -39,6 +47,26 @@ class BoardController extends Controller
         }
 
         return response()->json($columns);
+    }
+
+    /**
+     * GET /api/projects/{project}/cards-timeline
+     * Vue plate des cartes pour le rendu d'une timeline groupée par responsable.
+     */
+    public function timeline(Request $request, Project $project): JsonResponse
+    {
+        $this->ensureMember($request, $project);
+
+        $cards = Card::where('project_id', $project->id)
+            ->whereNull('deleted_at')
+            ->with(['assignee:id,email,name,avatar_path', 'column:id,name,is_done'])
+            ->orderBy('created_at')
+            ->get([
+                'id', 'title', 'priority', 'due_date', 'completed_at',
+                'created_at', 'assigned_to', 'column_id', 'project_id',
+            ]);
+
+        return response()->json($cards);
     }
 
     public function showCard(Request $request, Card $card): JsonResponse
@@ -146,6 +174,18 @@ class BoardController extends Controller
             'column' => $column->name,
         ]);
 
+        // Notifs : tous les membres du projet (sauf l'auteur)
+        $link = "/projects/{$card->project_id}/tasks?card={$card->id}";
+        $this->notify->forProjectMembers(
+            projectId: $card->project_id,
+            type: 'task.created',
+            title: 'Nouvelle tâche',
+            body: $card->title,
+            link: $link,
+            actorId: $userId,
+            exceptUserId: $userId,
+        );
+
         return response()->json($card, 201);
     }
 
@@ -163,18 +203,50 @@ class BoardController extends Controller
             'parent_card_id' => ['nullable', 'uuid', 'exists:cards,id'],
         ]);
 
+        $previousAssignee = $card->assigned_to;
         $changed = array_keys(array_diff_assoc($data, $card->only(array_keys($data))));
         $card->update($data);
+        $userId = $this->userId($request);
 
         if (! empty($changed)) {
             $this->activity->log(
                 $card->project_id,
-                $this->userId($request),
+                $userId,
                 'card.updated',
                 $card,
                 $card->title,
                 ['fields' => $changed],
             );
+        }
+
+        // Notifs sur changement d'assignation
+        if (in_array('assigned_to', $changed, true)) {
+            $link = "/projects/{$card->project_id}/tasks?card={$card->id}";
+            // Nouveau assigné
+            if ($card->assigned_to) {
+                $this->sendTaskAssignedEmail($card, $request);
+                $this->notify->forUser(
+                    userId: $card->assigned_to,
+                    type: 'task.assigned',
+                    title: 'Une tâche t\'a été attribuée',
+                    body: $card->title,
+                    link: $link,
+                    projectId: $card->project_id,
+                    actorId: $userId,
+                );
+            }
+            // Ancien assigné (si différent)
+            if ($previousAssignee && $previousAssignee !== $card->assigned_to) {
+                $this->notify->forUser(
+                    userId: $previousAssignee,
+                    type: 'task.unassigned',
+                    title: 'Tâche retirée de tes attributions',
+                    body: $card->title,
+                    link: $link,
+                    projectId: $card->project_id,
+                    actorId: $userId,
+                );
+            }
         }
 
         $card->load(['assignee:id,email,name,avatar_path', 'labels:id,name,color']);
@@ -306,9 +378,30 @@ class BoardController extends Controller
         });
 
         if ($logMeta) {
+            $userId = $this->userId($request);
+            // Notif si la carte vient d'être complétée (passage vers colonne is_done)
+            $movedCard = $logMeta['card'];
+            $movedCard->refresh();
+            if ($movedCard->completed_at && $movedCard->wasChanged('completed_at') === false) {
+                // wasChanged ne marche pas après refresh ; on compare avec le snapshot
+                // On utilise une heuristique : si la colonne est is_done, on notifie
+                $toCol = Column::find($movedCard->column_id);
+                if ($toCol && $toCol->is_done) {
+                    $this->notify->forProjectMembers(
+                        projectId: $project->id,
+                        type: 'task.completed',
+                        title: 'Tâche terminée',
+                        body: $movedCard->title,
+                        link: "/projects/{$project->id}/tasks?card={$movedCard->id}",
+                        actorId: $userId,
+                        exceptUserId: $userId,
+                    );
+                }
+            }
+
             $this->activity->log(
                 $project->id,
-                $this->userId($request),
+                $userId,
                 'card.moved',
                 $logMeta['card'],
                 $logMeta['card']->title,
@@ -357,6 +450,54 @@ class BoardController extends Controller
                 'name' => $c['name'],
                 'position' => $c['position'],
                 'is_done' => $c['is_done'],
+            ]);
+        }
+    }
+
+    /**
+     * Envoie un email d'attribution si l'assigné a activé la préférence.
+     * Échec d'envoi non bloquant — on log et on continue.
+     */
+    private function sendTaskAssignedEmail(Card $card, Request $request): void
+    {
+        $assignee = User::find($card->assigned_to);
+        if (! $assignee || ! $assignee->email || ! $assignee->notify_task_assignment_email) {
+            return;
+        }
+
+        // Pas d'email à soi-même
+        $actorId = $this->userId($request);
+        if ($assignee->id === $actorId) {
+            return;
+        }
+
+        $project = $card->project;
+        $column = $card->column;
+        $assigner = $request->attributes->get('user');
+
+        $taskUrl = rtrim((string) config('app.url'), '/')
+            ."/projects/{$card->project_id}/tasks?card={$card->id}";
+
+        try {
+            Mail::to($assignee->email)->send(new TaskAssigned(
+                assigneeName: $assignee->name ?? $assignee->email,
+                task: [
+                    'title' => $card->title,
+                    'description' => $card->description,
+                    'priority' => $card->priority,
+                    'due_date' => $card->due_date?->toDateString(),
+                    'project_name' => $project?->name ?? 'Projet',
+                    'project_color' => $project?->color ?? '#dc2626',
+                    'column_name' => $column?->name,
+                ],
+                taskUrl: $taskUrl,
+                assignerName: $assigner?->name ?? $assigner?->email,
+            ));
+        } catch (\Throwable $e) {
+            Log::warning('TaskAssigned email failed', [
+                'card_id' => $card->id,
+                'assignee' => $assignee->email,
+                'error' => $e->getMessage(),
             ]);
         }
     }

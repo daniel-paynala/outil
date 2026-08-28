@@ -36,12 +36,22 @@ class GithubController extends Controller
     {
         $this->ensureMember($request, $project);
 
+        // Normalise full_name : accepte URL GitHub complète, .git, slash final, etc.
+        if ($request->filled('full_name')) {
+            $request->merge([
+                'full_name' => $this->normalizeFullName($request->input('full_name')),
+            ]);
+        }
+
         $data = $request->validate([
             'full_name' => ['required', 'string', 'regex:/^[\w.-]+\/[\w.-]+$/'],
             'platform' => ['required', 'string', 'in:'.implode(',', self::PLATFORMS)],
             'access_token' => ['required', 'string', 'min:10'],
             'default_branch' => ['nullable', 'string', 'max:120'],
             'description' => ['nullable', 'string', 'max:500'],
+        ], [
+            'full_name.regex' => 'Format attendu : "owner/repo" (par ex. acme/super-projet) ou l\'URL GitHub complète.',
+            'access_token.min' => 'Le token doit faire au moins 10 caractères.',
         ]);
 
         $userId = $this->userId($request);
@@ -208,5 +218,35 @@ class GithubController extends Controller
         if (! $project->hasMember($this->userId($request))) {
             abort(403, 'Not a member of this project');
         }
+    }
+
+    /**
+     * Normalise les variations courantes de l'input "full_name" :
+     *   - https://github.com/owner/repo
+     *   - http://github.com/owner/repo.git
+     *   - git@github.com:owner/repo.git
+     *   - owner/repo/
+     *   - owner/repo.git
+     *   - owner/repo
+     * → toujours retourne "owner/repo"
+     */
+    private function normalizeFullName(string $input): string
+    {
+        $s = trim($input);
+
+        // URL HTTP(S) GitHub
+        if (preg_match('~^https?://(?:www\.)?github\.com/([^/]+/[^/?#]+)~i', $s, $m)) {
+            $s = $m[1];
+        }
+        // URL SSH GitHub : git@github.com:owner/repo(.git)
+        elseif (preg_match('~^git@github\.com:([^/]+/[^/?#]+)~i', $s, $m)) {
+            $s = $m[1];
+        }
+
+        // Retire le suffixe .git et le slash final
+        $s = preg_replace('/\.git$/', '', $s);
+        $s = rtrim($s, '/');
+
+        return $s;
     }
 }

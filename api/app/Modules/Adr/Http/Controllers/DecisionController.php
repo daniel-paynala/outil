@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Modules\Activity\Services\ActivityLogger;
 use App\Modules\Adr\Models\Decision;
 use App\Modules\Core\Models\Project;
+use App\Modules\Notifications\Services\NotificationService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
@@ -13,7 +14,10 @@ class DecisionController extends Controller
 {
     private const STATUSES = ['proposed', 'accepted', 'deprecated', 'superseded'];
 
-    public function __construct(private readonly ActivityLogger $activity) {}
+    public function __construct(
+        private readonly ActivityLogger $activity,
+        private readonly NotificationService $notify,
+    ) {}
 
     public function index(Request $request, Project $project): JsonResponse
     {
@@ -63,6 +67,16 @@ class DecisionController extends Controller
             'decision.created',
             $decision,
             "ADR-{$decision->number} · {$decision->title}",
+        );
+
+        $this->notify->forProjectMembers(
+            projectId: $project->id,
+            type: 'decision.created',
+            title: 'Nouvelle décision',
+            body: "ADR-{$decision->number} · {$decision->title}",
+            link: "/projects/{$project->id}/adr/{$decision->id}",
+            actorId: $userId,
+            exceptUserId: $userId,
         );
 
         return response()->json($decision, 201);

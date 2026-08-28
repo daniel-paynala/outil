@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { apiFetch } from "@/lib/api/client";
+import { useToast } from "@/core/toast/toast-context";
 import { Plus, Loader2, X } from "lucide-react";
 
 const COLORS = [
@@ -17,6 +18,7 @@ const COLORS = [
 
 export default function NewProjectForm() {
   const router = useRouter();
+  const toast = useToast();
   const [open, setOpen] = useState(false);
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
@@ -46,10 +48,13 @@ export default function NewProjectForm() {
 
     if (!res.ok) {
       const text = await res.text();
-      setError(text || `Erreur ${res.status}`);
+      const message = text || `Erreur ${res.status}`;
+      setError(message);
+      toast.error("Création du projet impossible", message);
       return;
     }
 
+    toast.success("Projet créé", name);
     reset();
     router.refresh();
   }

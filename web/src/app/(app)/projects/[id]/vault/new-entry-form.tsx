@@ -1,17 +1,23 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { X, Eye, EyeOff, Loader2 } from "lucide-react";
+import { X, Eye, EyeOff, Loader2, Globe2, Lock } from "lucide-react";
 import type { VaultCategory, VaultEntry } from "@/lib/types";
 import { apiFetch } from "@/lib/api/client";
+import { useToast } from "@/core/toast/toast-context";
 import { CATEGORIES } from "./vault-client";
+import MembersPicker, { type PickableMember } from "./members-picker";
+
+type Visibility = "all" | "restricted";
 
 export default function NewEntryForm({
   projectId,
+  currentUserId,
   onClose,
   onCreated,
 }: {
   projectId: string;
+  currentUserId: string;
   onClose: () => void;
   onCreated: (e: VaultEntry) => void;
 }) {
@@ -23,8 +29,12 @@ export default function NewEntryForm({
   const [notes, setNotes] = useState("");
   const [expiresAt, setExpiresAt] = useState("");
   const [showSecret, setShowSecret] = useState(false);
+  const [visibility, setVisibility] = useState<Visibility>("all");
+  const [allowedUserIds, setAllowedUserIds] = useState<string[]>([]);
+  const [members, setMembers] = useState<PickableMember[] | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const toast = useToast();
 
   useEffect(() => {
     function onEsc(e: KeyboardEvent) {
@@ -33,6 +43,24 @@ export default function NewEntryForm({
     window.addEventListener("keydown", onEsc);
     return () => window.removeEventListener("keydown", onEsc);
   }, [onClose]);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const res = await apiFetch(`/api/projects/${projectId}/members`);
+      if (!res.ok) {
+        if (!cancelled) setMembers([]);
+        return;
+      }
+      const list = (await res.json()) as PickableMember[];
+      if (!cancelled) {
+        setMembers(list.filter((m) => m.user_id !== currentUserId));
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [projectId, currentUserId]);
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -47,18 +75,31 @@ export default function NewEntryForm({
       url: url || null,
       notes: notes || null,
       expires_at: expiresAt || null,
+      visibility,
+      allowed_user_ids: visibility === "restricted" ? allowedUserIds : [],
     };
 
-    const res = await apiFetch(`/api/projects/${projectId}/vault`, {
-      method: "POST",
-      body: JSON.stringify(body),
-    });
-    setLoading(false);
-    if (!res.ok) {
-      setError(await res.text());
-      return;
+    try {
+      const res = await apiFetch(`/api/projects/${projectId}/vault`, {
+        method: "POST",
+        body: JSON.stringify(body),
+      });
+      setLoading(false);
+      if (!res.ok) {
+        const txt = await res.text();
+        setError(txt);
+        toast.error("Création impossible", txt || `Erreur ${res.status}`);
+        return;
+      }
+      const created = (await res.json()) as VaultEntry;
+      toast.success("Créée", `Entrée « ${created.name} »`);
+      onCreated(created);
+    } catch (err) {
+      setLoading(false);
+      const msg = err instanceof Error ? err.message : String(err);
+      setError(msg);
+      toast.error("Création impossible", msg);
     }
-    onCreated((await res.json()) as VaultEntry);
   }
 
   return (
@@ -168,6 +209,65 @@ export default function NewEntryForm({
               className="rounded-md border border-[var(--border)] bg-[var(--background)] px-3 py-2 text-sm"
             />
           </Field>
+
+          <fieldset className="space-y-2">
+            <legend className="text-xs font-medium">Accès</legend>
+            <label className="flex items-start gap-2 cursor-pointer rounded-md border border-[var(--border)] px-3 py-2 hover:border-[var(--color-neutral-400)]">
+              <input
+                type="radio"
+                name="visibility"
+                value="all"
+                checked={visibility === "all"}
+                onChange={() => setVisibility("all")}
+                className="mt-0.5 accent-[var(--color-brand-red)]"
+              />
+              <span className="flex-1">
+                <span className="flex items-center gap-1.5 text-sm font-medium">
+                  <Globe2 size={13} />
+                  Tout le monde du projet
+                </span>
+                <span className="block text-[11px] text-[var(--muted)]">
+                  Tous les membres pourront voir et révéler ce secret.
+                </span>
+              </span>
+            </label>
+            <label className="flex items-start gap-2 cursor-pointer rounded-md border border-[var(--border)] px-3 py-2 hover:border-[var(--color-neutral-400)]">
+              <input
+                type="radio"
+                name="visibility"
+                value="restricted"
+                checked={visibility === "restricted"}
+                onChange={() => setVisibility("restricted")}
+                className="mt-0.5 accent-[var(--color-brand-red)]"
+              />
+              <span className="flex-1">
+                <span className="flex items-center gap-1.5 text-sm font-medium">
+                  <Lock size={13} />
+                  Seulement certaines personnes
+                </span>
+                <span className="block text-[11px] text-[var(--muted)]">
+                  Tu auras toujours accès. Choisis qui d'autre peut voir.
+                </span>
+              </span>
+            </label>
+
+            {visibility === "restricted" && (
+              <div className="pt-1">
+                {members === null ? (
+                  <div className="flex items-center gap-2 text-xs text-[var(--muted)] px-1 py-2">
+                    <Loader2 size={12} className="animate-spin" />
+                    Chargement des membres…
+                  </div>
+                ) : (
+                  <MembersPicker
+                    members={members}
+                    selected={allowedUserIds}
+                    onChange={setAllowedUserIds}
+                  />
+                )}
+              </div>
+            )}
+          </fieldset>
 
           {error && (
             <p className="text-xs text-[var(--color-danger)] border border-[var(--color-danger)]/20 rounded px-3 py-2">

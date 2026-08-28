@@ -7,6 +7,7 @@ use App\Modules\Core\Models\Project;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\SoftDeletes;
 use Laravel\Scout\Searchable;
@@ -48,6 +49,7 @@ class VaultEntry extends Model
         'notes',
         'url',
         'expires_at',
+        'visibility',
         'created_by',
         'updated_by',
     ];
@@ -85,5 +87,35 @@ class VaultEntry extends Model
     public function accessLogs(): HasMany
     {
         return $this->hasMany(VaultAccessLog::class, 'entry_id')->orderByDesc('created_at');
+    }
+
+    /**
+     * Liste blanche des users pouvant accéder à cette entry quand visibility=restricted.
+     * Le créateur a toujours accès, indépendamment de cette liste.
+     */
+    public function allowedUsers(): BelongsToMany
+    {
+        return $this->belongsToMany(User::class, 'vault_entry_users', 'vault_entry_id', 'user_id')
+            ->withTimestamps();
+    }
+
+    /**
+     * Détermine si l'utilisateur a accès à cette entry.
+     * - Créateur : toujours accès
+     * - 'all' : tout le monde a accès
+     * - 'restricted' : seulement les users explicitement listés
+     *
+     * Note : l'appelant doit avoir déjà vérifié que l'user est membre du projet.
+     */
+    public function isAccessibleBy(string $userId): bool
+    {
+        if ($this->created_by === $userId) {
+            return true;
+        }
+        if ($this->visibility === 'all') {
+            return true;
+        }
+
+        return $this->allowedUsers()->where('user_id', $userId)->exists();
     }
 }

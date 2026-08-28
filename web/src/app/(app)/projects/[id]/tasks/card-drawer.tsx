@@ -23,6 +23,9 @@ import type {
   ProjectMember,
 } from "@/lib/types";
 import { apiFetch } from "@/lib/api/client";
+import { useToast } from "@/core/toast/toast-context";
+import Avatar from "@/core/ui/avatar";
+import CardAttachments from "./card-attachments";
 
 const PRIORITIES = [
   { value: "", label: "—" },
@@ -53,6 +56,7 @@ export default function CardDrawer({
   onDeleted: () => void;
   onLabelsChanged: (labels: LabelType[]) => void;
 }) {
+  const toast = useToast();
   const [detail, setDetail] = useState<CardDetail | null>(null);
   const [saving, setSaving] = useState(false);
 
@@ -79,18 +83,31 @@ export default function CardDrawer({
     // Optimistic update — reflect change instantly
     setDetail({ ...detail, ...body } as CardDetail);
     setSaving(true);
-    const res = await apiFetch(`/api/cards/${cardId}`, {
-      method: "PATCH",
-      body: JSON.stringify(body),
-    });
-    setSaving(false);
-    if (res.ok) {
-      const updated = (await res.json()) as CardSummary;
-      setDetail((d) => (d ? { ...d, ...updated } : d));
-      onUpdated(updated);
-    } else {
-      // Revert on failure
+    try {
+      const res = await apiFetch(`/api/cards/${cardId}`, {
+        method: "PATCH",
+        body: JSON.stringify(body),
+      });
+      setSaving(false);
+      if (res.ok) {
+        const updated = (await res.json()) as CardSummary;
+        setDetail((d) => (d ? { ...d, ...updated } : d));
+        onUpdated(updated);
+      } else {
+        // Revert on failure
+        setDetail(prev);
+        toast.error(
+          "Mise à jour impossible",
+          (await res.text()) || `Erreur ${res.status}`,
+        );
+      }
+    } catch (err) {
+      setSaving(false);
       setDetail(prev);
+      toast.error(
+        "Mise à jour impossible",
+        err instanceof Error ? err.message : String(err),
+      );
     }
   }
 
@@ -118,14 +135,28 @@ export default function CardDrawer({
   }
 
   async function handleCreateLabel(name: string, color: string) {
-    const res = await apiFetch(`/api/projects/${projectId}/labels`, {
-      method: "POST",
-      body: JSON.stringify({ name, color }),
-    });
-    if (!res.ok) return;
-    const label = (await res.json()) as LabelType;
-    onLabelsChanged([...labels, label]);
-    await handleAttachLabel(label.id);
+    try {
+      const res = await apiFetch(`/api/projects/${projectId}/labels`, {
+        method: "POST",
+        body: JSON.stringify({ name, color }),
+      });
+      if (!res.ok) {
+        toast.error(
+          "Création impossible",
+          (await res.text()) || `Erreur ${res.status}`,
+        );
+        return;
+      }
+      const label = (await res.json()) as LabelType;
+      toast.success("Créé", `Label « ${label.name} »`);
+      onLabelsChanged([...labels, label]);
+      await handleAttachLabel(label.id);
+    } catch (err) {
+      toast.error(
+        "Création impossible",
+        err instanceof Error ? err.message : String(err),
+      );
+    }
   }
 
   async function handleAddChild(title: string) {
@@ -157,10 +188,24 @@ export default function CardDrawer({
 
   async function handleDelete() {
     if (!confirm("Supprimer cette carte ?")) return;
-    const res = await apiFetch(`/api/cards/${cardId}`, { method: "DELETE" });
-    if (res.ok) {
-      onDeleted();
-      onClose();
+    const title = detail?.title;
+    try {
+      const res = await apiFetch(`/api/cards/${cardId}`, { method: "DELETE" });
+      if (res.ok) {
+        toast.success("Supprimée", title);
+        onDeleted();
+        onClose();
+      } else {
+        toast.error(
+          "Suppression impossible",
+          (await res.text()) || `Erreur ${res.status}`,
+        );
+      }
+    } catch (err) {
+      toast.error(
+        "Suppression impossible",
+        err instanceof Error ? err.message : String(err),
+      );
     }
   }
 
@@ -310,11 +355,7 @@ export default function CardDrawer({
                 className="flex items-center gap-2 text-sm rounded border border-[var(--border)] px-3 py-1.5"
               >
                 <span className="flex-1 truncate">{c.title}</span>
-                {c.assignee && (
-                  <span className="size-5 rounded-full bg-[var(--color-neutral-300)] dark:bg-[var(--color-neutral-600)] flex items-center justify-center text-[10px]">
-                    {c.assignee.email.charAt(0).toUpperCase()}
-                  </span>
-                )}
+                {c.assignee && <Avatar user={c.assignee} size="xs" />}
               </li>
             ))}
           </ul>
@@ -371,6 +412,8 @@ export default function CardDrawer({
           </Section>
         )}
 
+        <CardAttachments cardId={detail.id} />
+
         <CommentsSection
           cardId={detail.id}
           onCountChange={(n) => {
@@ -390,6 +433,7 @@ function CommentsSection({
   cardId: string;
   onCountChange: (n: number) => void;
 }) {
+  const toast = useToast();
   const [comments, setComments] = useState<CardComment[] | null>(null);
   const [content, setContent] = useState("");
   const [loading, setLoading] = useState(false);
@@ -410,26 +454,54 @@ function CommentsSection({
     e.preventDefault();
     if (!content.trim()) return;
     setLoading(true);
-    const res = await apiFetch(`/api/cards/${cardId}/comments`, {
-      method: "POST",
-      body: JSON.stringify({ content: content.trim() }),
-    });
-    setLoading(false);
-    if (!res.ok) return;
-    const c = (await res.json()) as CardComment;
-    const next = [...(comments ?? []), c];
-    setComments(next);
-    onCountChange(next.length);
-    setContent("");
+    try {
+      const res = await apiFetch(`/api/cards/${cardId}/comments`, {
+        method: "POST",
+        body: JSON.stringify({ content: content.trim() }),
+      });
+      setLoading(false);
+      if (!res.ok) {
+        toast.error(
+          "Envoi impossible",
+          (await res.text()) || `Erreur ${res.status}`,
+        );
+        return;
+      }
+      const c = (await res.json()) as CardComment;
+      const next = [...(comments ?? []), c];
+      setComments(next);
+      onCountChange(next.length);
+      setContent("");
+    } catch (err) {
+      setLoading(false);
+      toast.error(
+        "Envoi impossible",
+        err instanceof Error ? err.message : String(err),
+      );
+    }
   }
 
   async function deleteComment(id: string) {
     if (!confirm("Supprimer ce commentaire ?")) return;
-    const res = await apiFetch(`/api/comments/${id}`, { method: "DELETE" });
-    if (!res.ok) return;
-    const next = (comments ?? []).filter((c) => c.id !== id);
-    setComments(next);
-    onCountChange(next.length);
+    try {
+      const res = await apiFetch(`/api/comments/${id}`, { method: "DELETE" });
+      if (!res.ok) {
+        toast.error(
+          "Suppression impossible",
+          (await res.text()) || `Erreur ${res.status}`,
+        );
+        return;
+      }
+      const next = (comments ?? []).filter((c) => c.id !== id);
+      setComments(next);
+      onCountChange(next.length);
+      toast.success("Supprimé", "Commentaire");
+    } catch (err) {
+      toast.error(
+        "Suppression impossible",
+        err instanceof Error ? err.message : String(err),
+      );
+    }
   }
 
   return (
@@ -449,9 +521,7 @@ function CommentsSection({
               className="rounded-md border border-[var(--border)] bg-[var(--surface)] p-3 group"
             >
               <div className="flex items-center gap-2 mb-1">
-                <span className="size-5 rounded-full bg-[var(--color-neutral-300)] dark:bg-[var(--color-neutral-600)] flex items-center justify-center text-[10px] font-medium shrink-0">
-                  {c.user?.email.charAt(0).toUpperCase() ?? "?"}
-                </span>
+                <Avatar user={c.user} size="xs" />
                 <span className="text-xs font-medium">
                   {c.user?.email ?? "—"}
                 </span>

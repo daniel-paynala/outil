@@ -19,6 +19,31 @@ class ActivityLogger
         ?string $subjectName = null,
         array $metadata = [],
     ): ActivityLog {
+        return $this->record($projectId, $actorId, $action, $subject, $subjectName, $metadata);
+    }
+
+    /**
+     * Log d'une action globale (gestion utilisateurs, actions admin).
+     * project_id reste null.
+     */
+    public function logGlobal(
+        ?string $actorId,
+        string $action,
+        ?Model $subject = null,
+        ?string $subjectName = null,
+        array $metadata = [],
+    ): ActivityLog {
+        return $this->record(null, $actorId, $action, $subject, $subjectName, $metadata);
+    }
+
+    private function record(
+        ?string $projectId,
+        ?string $actorId,
+        string $action,
+        ?Model $subject,
+        ?string $subjectName,
+        array $metadata,
+    ): ActivityLog {
         $subjectType = $subject ? $this->typeFor($subject) : null;
         $subjectId = $subject?->getKey();
         $derivedName = $subjectName
@@ -49,6 +74,8 @@ class ActivityLogger
             'TimeEntry' => 'time_entry',
             'Project' => 'project',
             'ProjectMember' => 'project_member',
+            'User' => 'user',
+            'InvitationToken' => 'invitation',
             default => strtolower(class_basename($subject)),
         };
     }

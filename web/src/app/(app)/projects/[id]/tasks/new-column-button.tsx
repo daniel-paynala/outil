@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { Plus, X } from "lucide-react";
 import { apiFetch } from "@/lib/api/client";
+import { useToast } from "@/core/toast/toast-context";
 import type { BoardColumn } from "@/lib/types";
 
 export default function NewColumnButton({
@@ -12,6 +13,7 @@ export default function NewColumnButton({
   projectId: string;
   onCreated: (col: BoardColumn) => void;
 }) {
+  const toast = useToast();
   const [open, setOpen] = useState(false);
   const [name, setName] = useState("");
   const [loading, setLoading] = useState(false);
@@ -20,16 +22,31 @@ export default function NewColumnButton({
     e.preventDefault();
     if (!name.trim()) return;
     setLoading(true);
-    const res = await apiFetch(`/api/projects/${projectId}/columns`, {
-      method: "POST",
-      body: JSON.stringify({ name: name.trim() }),
-    });
-    setLoading(false);
-    if (!res.ok) return;
-    const col = (await res.json()) as BoardColumn;
-    onCreated(col);
-    setName("");
-    setOpen(false);
+    try {
+      const res = await apiFetch(`/api/projects/${projectId}/columns`, {
+        method: "POST",
+        body: JSON.stringify({ name: name.trim() }),
+      });
+      setLoading(false);
+      if (!res.ok) {
+        toast.error(
+          "Création impossible",
+          (await res.text()) || `Erreur ${res.status}`,
+        );
+        return;
+      }
+      const col = (await res.json()) as BoardColumn;
+      toast.success("Créée", `Colonne « ${col.name} »`);
+      onCreated(col);
+      setName("");
+      setOpen(false);
+    } catch (err) {
+      setLoading(false);
+      toast.error(
+        "Création impossible",
+        err instanceof Error ? err.message : String(err),
+      );
+    }
   }
 
   if (!open) {

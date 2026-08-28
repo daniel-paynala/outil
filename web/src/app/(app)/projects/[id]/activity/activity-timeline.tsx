@@ -22,6 +22,7 @@ import {
 } from "lucide-react";
 import { clsx } from "clsx";
 import type { ActivityLog } from "@/lib/types";
+import Avatar from "@/core/ui/avatar";
 
 const SUBJECT_ICONS: Record<string, LucideIcon> = {
   card: ListTodo,
@@ -164,13 +165,16 @@ function LogRow({ log }: { log: ActivityLog }) {
 
   return (
     <li className="flex items-start gap-3 rounded-md border border-[var(--border)] bg-[var(--surface)] px-4 py-3">
-      <span className="size-8 shrink-0 rounded-md bg-[var(--color-neutral-200)] dark:bg-[var(--color-neutral-700)] flex items-center justify-center">
-        <SubjectIcon size={14} strokeWidth={1.75} />
-      </span>
+      <div className="relative shrink-0">
+        <Avatar user={log.actor} size="lg" />
+        <span className="absolute -bottom-1 -right-1 size-5 rounded-md bg-[var(--surface)] ring-2 ring-[var(--surface)] border border-[var(--border)] flex items-center justify-center text-[var(--muted)]">
+          <SubjectIcon size={11} strokeWidth={1.75} />
+        </span>
+      </div>
       <div className="flex-1 min-w-0">
         <p className="text-sm flex items-center gap-1.5 flex-wrap">
           <span className="font-medium">
-            {log.actor?.email ?? "Système"}
+            {log.actor?.name ?? log.actor?.email ?? "Système"}
           </span>
           <span className="text-[var(--muted)]">
             {verbIcon && (
