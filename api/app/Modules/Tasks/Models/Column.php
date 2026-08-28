@@ -2,6 +2,7 @@
 
 namespace App\Modules\Tasks\Models;
 
+use App\Models\Concerns\StoresPostgresBoolean;
 use App\Modules\Core\Models\Project;
 use Illuminate\Database\Eloquent\Casts\Attribute;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
@@ -12,6 +13,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 class Column extends Model
 {
     use HasUuids;
+    use StoresPostgresBoolean;
 
     protected $table = 'columns';
 
@@ -30,19 +32,10 @@ class Column extends Model
         ];
     }
 
-    /**
-     * Setter explicite pour `is_done`.
-     *
-     * Le cast 'boolean' standard de Laravel bind via PDO_PGSQL en PHP 8.4 envoie
-     * un entier (0/1), ce que Postgres strict refuse pour une colonne BOOLEAN.
-     * On envoie 't'/'f' qui sont les littéraux booléens natifs de Postgres.
-     */
+    /** Voir `StoresPostgresBoolean` : le littéral `'t'`/`'f'` n'est posé qu'en Postgres. */
     protected function isDone(): Attribute
     {
-        return Attribute::make(
-            get: fn ($value) => (bool) $value,
-            set: fn ($value) => $value ? 't' : 'f',
-        );
+        return $this->postgresBoolean();
     }
 
     public function project(): BelongsTo

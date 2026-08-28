@@ -4,6 +4,7 @@ namespace App\Modules\Tasks\Models;
 
 use App\Models\User;
 use App\Modules\Core\Models\Project;
+use App\Modules\Roadmap\Models\RoadmapItem;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -125,7 +126,7 @@ class Card extends Model
     public function roadmapItems(): BelongsToMany
     {
         return $this->belongsToMany(
-            \App\Modules\Roadmap\Models\RoadmapItem::class,
+            RoadmapItem::class,
             'card_roadmap_items',
         )->withTimestamps();
     }

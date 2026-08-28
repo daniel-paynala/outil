@@ -2,9 +2,11 @@
 
 namespace App\Models;
 
+use App\Models\Concerns\StoresPostgresBoolean;
 use App\Modules\Core\Models\Project;
 use App\Modules\Core\Models\ProjectMember;
 use App\Modules\Core\Services\SupabaseUserSync;
+use App\Modules\Files\Services\SupabaseStorage;
 use Illuminate\Database\Eloquent\Casts\Attribute;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Model;
@@ -14,6 +16,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 class User extends Model
 {
     use HasUuids;
+    use StoresPostgresBoolean;
 
     protected $fillable = [
         'id',
@@ -64,29 +67,19 @@ class User extends Model
             return null;
         }
 
-        return app(\App\Modules\Files\Services\SupabaseStorage::class)
+        return app(SupabaseStorage::class)
             ->publicUrl($this->avatar_path);
     }
 
-    /**
-     * Setter explicite pour `notify_task_assignment_email`.
-     * Voir Column.php : PDO_PGSQL bind les bool en int (0/1) ce que Postgres
-     * 16 strict refuse. On force des littéraux 't'/'f'.
-     */
+    /** Voir `StoresPostgresBoolean`. */
     protected function notifyTaskAssignmentEmail(): Attribute
     {
-        return Attribute::make(
-            get: fn ($value) => (bool) $value,
-            set: fn ($value) => $value ? 't' : 'f',
-        );
+        return $this->postgresBoolean();
     }
 
     protected function notifyProjectDocumentEmail(): Attribute
     {
-        return Attribute::make(
-            get: fn ($value) => (bool) $value,
-            set: fn ($value) => $value ? 't' : 'f',
-        );
+        return $this->postgresBoolean();
     }
 
     public function ownedProjects(): HasMany

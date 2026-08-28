@@ -10,6 +10,28 @@ use Illuminate\Support\Str;
 abstract class TestCase extends BaseTestCase
 {
     /**
+     * Coupe l'indexation pendant les tests.
+     *
+     * ## Pourquoi c'est le défaut plutôt qu'une option
+     *
+     * Plusieurs modèles sont `Searchable` : les créer déclenche un appel HTTP
+     * vers Meilisearch, qui ne tourne pas ici. La suite échouait donc sur une
+     * `CommunicationException` levée à la sauvegarde — une panne réseau
+     * déguisée en test rouge, très loin de ce qu'on croyait vérifier.
+     *
+     * L'indexation n'est de toute façon pas ce que ces tests contrôlent : ils
+     * portent sur les règles d'accès et les réponses de l'API. Les tests qui
+     * parlent réellement du moteur — la sonde de `MonitoringTest` — remettent
+     * le pilote en place eux-mêmes.
+     */
+    protected function setUp(): void
+    {
+        parent::setUp();
+
+        config(['scout.driver' => null]);
+    }
+
+    /**
      * Crée un compte et retourne l'en-tête d'authentification correspondant.
      *
      * ## Pourquoi forger un vrai jeton
