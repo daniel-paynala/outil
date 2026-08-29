@@ -37,6 +37,17 @@ begin
     -- `task.assigned` et tout futur `task.*` relèvent de la même case, sans
     -- qu'il faille revenir ici à chaque nouveau type.
     preference := case
+        -- Une mention passe toujours, quelles que soient les préférences.
+        --
+        -- Ce n'est pas un oubli : être nommé dans un commentaire est une
+        -- demande adressée, pas une information de plus sur un projet. La
+        -- taire parce que « notifications de tâches » est décoché reviendrait
+        -- à casser la seule chose qui distingue une mention d'un commentaire
+        -- ordinaire.
+        --
+        -- Explicite plutôt que laissée au repli des types inconnus : le
+        -- comportement est le même, la différence est qu'il est décidé.
+        when new.type = 'card.mentioned'       then null
         when new.type like 'message.%'         then 'notify_messages'
         when new.type like 'task.assigned'     then 'notify_task_assignment'
         when new.type like 'task.unassigned'   then 'notify_task_assignment'
