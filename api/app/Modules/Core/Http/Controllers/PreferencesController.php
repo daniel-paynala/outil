@@ -32,6 +32,12 @@ class PreferencesController extends Controller
             $rules[$key] = ['sometimes', 'boolean'];
         }
 
+        // La signature n'est pas une préférence de notification : c'est du
+        // texte, et elle a ses propres règles. `nullable` compte — vider le
+        // champ doit pouvoir signifier « je n'en veux pas », ce qu'une chaîne
+        // absente ne dirait pas.
+        $rules['mail_signature'] = ['sometimes', 'nullable', 'string', 'max:500'];
+
         $data = $request->validate($rules);
         $user = $this->user($request);
         $user->update($data);
@@ -39,7 +45,7 @@ class PreferencesController extends Controller
         return response()->json($this->payload($user->fresh()));
     }
 
-    /** @return array<string, bool> */
+    /** @return array<string, mixed> */
     private function payload(User $user): array
     {
         $out = [];
@@ -48,6 +54,12 @@ class PreferencesController extends Controller
             // ajoutée après la création du compte — vaut « activée ».
             $out[$key] = (bool) ($user->{$key} ?? true);
         }
+
+        // Rendue telle quelle, `null` compris : c'est au client de distinguer
+        // « jamais réglée » — où il propose sa mention par défaut — de « vidée
+        // exprès », où il n'ajoute rien. Substituer un défaut ici rendrait les
+        // deux indiscernables, et la mention impossible à retirer.
+        $out['mail_signature'] = $user->mail_signature;
 
         return $out;
     }

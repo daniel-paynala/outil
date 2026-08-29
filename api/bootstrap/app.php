@@ -6,6 +6,7 @@ use App\Http\Middleware\ResolveSupabaseAuth;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
+use Illuminate\Http\Request;
 
 return Application::configure(basePath: dirname(__DIR__))
     ->withRouting(
@@ -34,6 +35,21 @@ return Application::configure(basePath: dirname(__DIR__))
          * n'importe qui pourrait alors se déclarer une autre adresse.
          */
         $middleware->trustProxies(at: '*');
+
+        /*
+         * Une signature vidée reste une chaîne vide.
+         *
+         * `ConvertEmptyStringsToNull` s'applique par défaut à toute requête, et
+         * la distinction compte ici : `null` veut dire « jamais réglée », auquel
+         * cas l'application propose « Envoyé depuis Arche » ; une chaîne vide
+         * veut dire « je n'en veux pas ».
+         *
+         * Les confondre rendrait la mention impossible à retirer — on l'efface,
+         * elle revient au message suivant, et rien n'explique pourquoi.
+         */
+        $middleware->convertEmptyStringsToNull(except: [
+            fn (Request $request) => $request->is('api/me/preferences'),
+        ]);
 
         $middleware->alias([
             'supabase.auth' => EnsureSupabaseAuth::class,

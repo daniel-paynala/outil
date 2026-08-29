@@ -32,6 +32,7 @@ class User extends Model
         'notify_mail',
         'notify_task_assignment_email',
         'notify_project_document_email',
+        'mail_signature',
     ];
 
     /** Préférences de notification push et in-app, par catégorie. */

@@ -81,4 +81,65 @@ class PreferencesTest extends TestCase
         $this->patchJson('/api/me/preferences', ['notify_tasks' => false])
             ->assertUnauthorized();
     }
+
+    // ── Signature de courrier ───────────────────────────────────────────
+
+    public function test_la_signature_est_absente_par_defaut(): void
+    {
+        // `null` veut dire « jamais réglée ». C'est au client de proposer sa
+        // mention par défaut dans ce cas.
+        [$_, $entetes] = $this->authenticate();
+
+        $this->getJson('/api/me/preferences', $entetes)
+            ->assertOk()
+            ->assertJsonPath('mail_signature', null);
+    }
+
+    public function test_la_signature_s_enregistre(): void
+    {
+        [$user, $entetes] = $this->authenticate();
+
+        $this->patchJson('/api/me/preferences', [
+            'mail_signature' => "Daniel Doviakon\nPaynala",
+        ], $entetes)
+            ->assertOk()
+            ->assertJsonPath('mail_signature', "Daniel Doviakon\nPaynala");
+
+        $this->assertSame("Daniel Doviakon\nPaynala", $user->fresh()->mail_signature);
+    }
+
+    public function test_une_signature_videe_se_distingue_d_une_absente(): void
+    {
+        // Vider le champ veut dire « je n'en veux pas », et doit être conservé
+        // tel quel : le confondre avec « jamais réglée » ferait revenir la
+        // mention par défaut qu'on venait justement de retirer.
+        [$user, $entetes] = $this->authenticate();
+
+        $this->patchJson('/api/me/preferences', [
+            'mail_signature' => '',
+        ], $entetes)->assertOk()->assertJsonPath('mail_signature', '');
+
+        $this->assertSame('', $user->fresh()->mail_signature);
+    }
+
+    public function test_une_signature_demesuree_est_refusee(): void
+    {
+        [$_, $entetes] = $this->authenticate();
+
+        $this->patchJson('/api/me/preferences', [
+            'mail_signature' => str_repeat('a', 501),
+        ], $entetes)->assertStatus(422);
+    }
+
+    public function test_les_preferences_de_notification_restent_intactes(): void
+    {
+        // La signature partage l'endpoint sans en changer le contrat.
+        [$_, $entetes] = $this->authenticate();
+
+        $this->patchJson('/api/me/preferences', [
+            'mail_signature' => 'Daniel',
+        ], $entetes)
+            ->assertOk()
+            ->assertJsonPath('notify_messages', true);
+    }
 }
