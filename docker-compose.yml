@@ -79,6 +79,30 @@ services:
     networks:
       - arche
 
+  # Le relais d'appel.
+  #
+  # ## Pourquoi il manquait
+  #
+  # Il n'était déclaré que dans `deploy/docker-compose.prod.yml`, un fichier
+  # que la production n'utilise pas. Il n'a donc jamais tourné — et comme
+  # `TURN_HOST` visait par ailleurs un nom proxifié par Cloudflare, qui ne
+  # relaie pas ces ports, rien ne le signalait : l'API livrait des identifiants
+  # valides pour un serveur qui n'existait pas.
+  #
+  # `network_mode: host` est nécessaire, pas un raccourci : coturn attribue des
+  # ports dans une plage (49160-49260) et doit annoncer aux téléphones des
+  # adresses qu'ils peuvent réellement joindre. Derrière le réseau de Docker, il
+  # annoncerait une adresse interne, et la négociation aboutirait sur une voix
+  # qui ne passe pas — la panne la plus déroutante qui soit.
+  coturn:
+    image: coturn/coturn:4.6-alpine
+    container_name: arche-coturn
+    network_mode: host
+    volumes:
+      - ./deploy/coturn.conf:/etc/coturn/turnserver.conf:ro
+    command: ["-c", "/etc/coturn/turnserver.conf"]
+    restart: unless-stopped
+
   redis:
     image: redis:7-alpine
     container_name: arche-redis
