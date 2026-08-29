@@ -238,9 +238,9 @@ class CallController extends Controller
     public function turnCredentials(Request $request): JsonResponse
     {
         $secret = config('calls.turn_secret');
-        $hote = config('calls.turn_host');
+        $hotes = $this->hotesDeRelais();
 
-        if (empty($secret) || empty($hote)) {
+        if (empty($secret) || $hotes === []) {
             return response()->json(['servers' => []]);
         }
 
@@ -250,9 +250,13 @@ class CallController extends Controller
         $expiration = now()->addHours(12)->timestamp;
         $utilisateur = $expiration.':'.$this->userId($request);
 
+        $signature = base64_encode(
+            hash_hmac('sha1', $utilisateur, $secret, true),
+        );
+
         return response()->json([
-            'servers' => [
-                [
+            'servers' => array_map(
+                fn (string $hote) => [
                     'urls' => [
                         "turn:{$hote}:3478?transport=udp",
                         // Certains réseaux d'entreprise bloquent l'UDP en
@@ -262,13 +266,31 @@ class CallController extends Controller
                         "turns:{$hote}:5349?transport=tcp",
                     ],
                     'username' => $utilisateur,
-                    'credential' => base64_encode(
-                        hash_hmac('sha1', $utilisateur, $secret, true),
-                    ),
+                    'credential' => $signature,
                 ],
-            ],
+                $hotes,
+            ),
             'expires_at' => $expiration,
         ]);
+    }
+
+    /**
+     * Les relais, dans l'ordre déclaré.
+     *
+     * L'ordre est celui de la proximité : le plus proche en tête. Il est
+     * conservé tel quel jusqu'au client, parce que c'est lui qui départage
+     * quand plusieurs relais aboutissent.
+     *
+     * @return array<int, string>
+     */
+    private function hotesDeRelais(): array
+    {
+        $brut = (string) config('calls.turn_hosts');
+
+        return array_values(array_filter(
+            array_map('trim', explode(',', $brut)),
+            fn (string $h) => $h !== '',
+        ));
     }
 
     private function userId(Request $request): string

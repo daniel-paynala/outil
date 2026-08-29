@@ -373,4 +373,61 @@ class CallTest extends TestCase
         // notification le ferait sonner deux fois pour un seul appel.
         Http::assertNotSent(fn ($request) => str_contains($request->url(), 'onesignal'));
     }
+
+    // ── Plusieurs relais ────────────────────────────────────────────────
+
+    public function test_plusieurs_relais_sont_proposes_dans_l_ordre(): void
+    {
+        // L'ordre est celui de la proximité. Il doit traverser l'API intact :
+        // c'est lui qui départage quand deux relais aboutissent, et l'inverser
+        // ferait passer la voix par l'Europe alors qu'un relais local répond.
+        config([
+            'calls.turn_hosts' => 'turn.paynala.ga, arche.paynala.com',
+            'calls.turn_secret' => 'secret',
+        ]);
+
+        [, $entetes] = $this->authenticate();
+
+        $serveurs = $this->getJson('/api/calls/turn', $entetes)
+            ->assertOk()
+            ->json('servers');
+
+        $this->assertCount(2, $serveurs);
+        $this->assertStringContainsString('turn.paynala.ga', $serveurs[0]['urls'][0]);
+        $this->assertStringContainsString('arche.paynala.com', $serveurs[1]['urls'][0]);
+    }
+
+    public function test_les_relais_partagent_le_meme_couple(): void
+    {
+        // Un seul secret pour tous : leur en donner de distincts obligerait à
+        // tenir la correspondance sans rien protéger de plus.
+        config([
+            'calls.turn_hosts' => 'a.example, b.example',
+            'calls.turn_secret' => 'secret',
+        ]);
+
+        [, $entetes] = $this->authenticate();
+
+        $serveurs = $this->getJson('/api/calls/turn', $entetes)->json('servers');
+
+        $this->assertSame($serveurs[0]['username'], $serveurs[1]['username']);
+        $this->assertSame($serveurs[0]['credential'], $serveurs[1]['credential']);
+    }
+
+    public function test_les_espaces_et_entrees_vides_sont_ignores(): void
+    {
+        // Une liste éditée à la main dans un `.env` finit toujours par porter
+        // une virgule de trop. Elle ne doit pas produire un relais nommé « ».
+        config([
+            'calls.turn_hosts' => ' a.example ,, b.example , ',
+            'calls.turn_secret' => 'secret',
+        ]);
+
+        [, $entetes] = $this->authenticate();
+
+        $this->assertCount(
+            2,
+            $this->getJson('/api/calls/turn', $entetes)->json('servers'),
+        );
+    }
 }
