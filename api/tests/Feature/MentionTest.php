@@ -9,6 +9,7 @@ use App\Modules\Tasks\Models\Column;
 use App\Support\Mentions;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Str;
 use Tests\TestCase;
 
@@ -250,5 +251,47 @@ class MentionTest extends TestCase
         ], $this->entetes)->assertOk();
 
         $this->assertSame([$fidele->id], $this->notifies());
+    }
+
+    // ── Le push ─────────────────────────────────────────────────────────
+
+    public function test_une_mention_part_aussi_sur_le_telephone(): void
+    {
+        // Une notification qui n'existe que dans le centre de l'app n'arrive
+        // qu'à qui pense à l'ouvrir. Autant dire jamais, pour une information
+        // dont l'intérêt est d'arriver sans qu'on la cherche.
+        [$fidele] = $this->authenticate();
+        $this->rattacher($this->projet, $fidele);
+
+        config(['onesignal.app_id' => 'app', 'onesignal.rest_key' => 'cle']);
+        Http::fake(['*' => Http::response(['id' => 'n1'], 200)]);
+
+        $this->commenter("@[Fidèle]({$fidele->id}) regarde")->assertCreated();
+
+        Http::assertSent(function ($requete) use ($fidele) {
+            $c = $requete->data();
+
+            return $c['include_aliases']['external_id'] === [$fidele->id]
+                && $c['data']['type'] === 'card.mentioned'
+                && str_contains((string) $c['data']['link'], $this->carte->id);
+        });
+    }
+
+    public function test_le_push_ne_part_pas_a_qui_la_ligne_a_ete_refusee(): void
+    {
+        // Le déclencheur de préférences abandonne l'insertion en silence. Le
+        // push relit donc ce qui a réellement été inséré plutôt que de refaire
+        // le raisonnement — deux implémentations de la même règle finiraient
+        // par diverger, et c'est la plus permissive qui ferait la loi.
+        [$fidele] = $this->authenticate();
+        $this->rattacher($this->projet, $fidele);
+
+        config(['onesignal.app_id' => 'app', 'onesignal.rest_key' => 'cle']);
+        Http::fake(['*' => Http::response(['id' => 'n1'], 200)]);
+
+        // Aucune ligne créée : l'auteur ne se notifie pas lui-même.
+        $this->commenter("@[Moi]({$this->auteur->id}) note")->assertCreated();
+
+        Http::assertNothingSent();
     }
 }
