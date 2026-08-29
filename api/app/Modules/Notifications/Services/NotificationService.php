@@ -5,6 +5,7 @@ namespace App\Modules\Notifications\Services;
 use App\Models\Notification;
 use App\Modules\Core\Models\Project;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Str;
 
 class NotificationService
 {
@@ -68,7 +69,7 @@ class NotificationService
 
         $now = now();
         $rows = $memberIds->map(fn ($uid) => [
-            'id' => (string) \Illuminate\Support\Str::uuid(),
+            'id' => (string) Str::uuid(),
             'user_id' => $uid,
             'project_id' => $projectId,
             'actor_id' => $actorId,

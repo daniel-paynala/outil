@@ -177,7 +177,7 @@ class SearchController extends Controller
     {
         return $decisions->map(fn (Decision $d) => [
             'id' => $d->id,
-            'title' => "ADR-".str_pad((string) $d->number, 3, '0', STR_PAD_LEFT)." · {$d->title}",
+            'title' => 'ADR-'.str_pad((string) $d->number, 3, '0', STR_PAD_LEFT)." · {$d->title}",
             'snippet' => $this->snippet($d->context ?: $d->decision),
             'status' => $d->status,
             'project' => $this->projectOf($projects, $d->project_id),
@@ -212,7 +212,10 @@ class SearchController extends Controller
     private function projectOf(Collection $projects, string $projectId): ?array
     {
         $p = $projects->get($projectId);
-        if (! $p) return null;
+        if (! $p) {
+            return null;
+        }
+
         return [
             'id' => $p->id,
             'name' => $p->name,
@@ -222,8 +225,11 @@ class SearchController extends Controller
 
     private function snippet(?string $text): ?string
     {
-        if (! $text) return null;
+        if (! $text) {
+            return null;
+        }
         $clean = trim(preg_replace('/\s+/', ' ', $text) ?? '');
+
         return mb_strlen($clean) > 160 ? mb_substr($clean, 0, 160).'…' : $clean;
     }
 

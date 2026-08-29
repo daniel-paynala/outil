@@ -3,14 +3,15 @@
 namespace App\Modules\Messagerie\Http\Controllers;
 
 use App\Http\Controllers\Controller;
+use App\Modules\Files\Services\SupabaseStorage;
 use App\Modules\Messagerie\Jobs\SendMessagePush;
 use App\Modules\Messagerie\Models\Conversation;
 use App\Modules\Messagerie\Models\ConversationMember;
 use App\Modules\Messagerie\Models\Message;
 use App\Modules\Messagerie\Models\MessageAttachment;
-use App\Modules\Files\Services\SupabaseStorage;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 
@@ -223,7 +224,7 @@ class MessageController extends Controller
      * Le chemin est préfixé par la conversation : ça garde le bucket lisible,
      * et un jour où l'on voudra purger un fil, tout est au même endroit.
      *
-     * @param  array<int, \Illuminate\Http\UploadedFile>  $files
+     * @param  array<int, UploadedFile>  $files
      * @return array<int, array<string, mixed>>
      */
     private function uploadAll(array $files, string $conversationId): array

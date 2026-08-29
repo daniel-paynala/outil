@@ -3,8 +3,8 @@
 namespace App\Providers;
 
 use App\Database\SupabasePostgresConnection;
-use Illuminate\Database\Connection;
 use App\Modules\Monitoring\Http\Controllers\QueueHealthController;
+use Illuminate\Database\Connection;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\ServiceProvider;

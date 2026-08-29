@@ -1,9 +1,14 @@
 <?php
 
-namespace App\Modules\Tasks\Support;
+namespace App\Support;
 
 /**
- * Les mentions dans un commentaire.
+ * Les mentions, dans un commentaire de tâche comme dans un message.
+ *
+ * Le format est partagé exprès : il n'y a aucune raison qu'écrire `@Fidèle`
+ * dans une conversation obéisse à d'autres règles que dans une carte, et deux
+ * analyseurs finiraient par diverger sur un cas limite que personne ne teste
+ * deux fois.
  *
  * ## Le format, et pourquoi pas simplement « @Daniel »
  *

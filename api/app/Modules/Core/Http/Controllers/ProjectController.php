@@ -48,7 +48,9 @@ class ProjectController extends Controller
                 $firstNonDoneId = $cols->firstWhere('is_done', false)?->id;
                 foreach ($cols as $col) {
                     $count = (int) ($cardCountsByColumn[$col->id] ?? 0);
-                    if ($count === 0) continue;
+                    if ($count === 0) {
+                        continue;
+                    }
                     if ($col->is_done) {
                         $stats['done'] += $count;
                     } elseif ($col->id === $firstNonDoneId) {

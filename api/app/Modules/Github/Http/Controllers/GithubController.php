@@ -69,7 +69,9 @@ class GithubController extends Controller
             $repoInfo->throw();
             $info = $repoInfo->json();
         } catch (Throwable $e) {
-            if ($e->getCode() >= 400 && $e->getCode() < 500) throw $e;
+            if ($e->getCode() >= 400 && $e->getCode() < 500) {
+                throw $e;
+            }
             abort(422, 'Impossible de contacter GitHub : '.$e->getMessage());
         }
 
@@ -182,7 +184,9 @@ class GithubController extends Controller
         $count = 0;
         foreach ($items as $item) {
             $sha = $item['sha'] ?? null;
-            if (! $sha) continue;
+            if (! $sha) {
+                continue;
+            }
 
             GithubCommit::updateOrCreate(
                 [

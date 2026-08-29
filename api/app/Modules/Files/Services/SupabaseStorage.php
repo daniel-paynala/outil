@@ -8,6 +8,7 @@ use Illuminate\Support\Facades\Http;
 class SupabaseStorage
 {
     public const BUCKET = 'project-files';
+
     public const AVATAR_BUCKET = 'avatars';
 
     private string $url;

@@ -6,7 +6,7 @@ use App\Models\User;
 use App\Modules\Core\Models\Project;
 use App\Modules\Tasks\Models\Card;
 use App\Modules\Tasks\Models\Column;
-use App\Modules\Tasks\Support\Mentions;
+use App\Support\Mentions;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;

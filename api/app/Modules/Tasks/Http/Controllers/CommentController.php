@@ -8,7 +8,7 @@ use App\Modules\Core\Models\Project;
 use App\Modules\Notifications\Services\NotificationService;
 use App\Modules\Tasks\Models\Card;
 use App\Modules\Tasks\Models\CardComment;
-use App\Modules\Tasks\Support\Mentions;
+use App\Support\Mentions;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Str;

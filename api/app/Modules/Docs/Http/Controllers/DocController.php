@@ -225,6 +225,7 @@ class DocController extends Controller
             $slug = "{$base}-{$i}";
             $i++;
         }
+
         return $slug;
     }
 }

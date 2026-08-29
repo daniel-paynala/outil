@@ -3,6 +3,7 @@
 namespace App\Modules\Core\Http\Controllers;
 
 use App\Http\Controllers\Controller;
+use App\Models\User;
 use App\Modules\Activity\Models\ActivityLog;
 use App\Modules\Core\Models\Project;
 use App\Modules\Tasks\Models\Card;
@@ -61,7 +62,8 @@ class ProjectStatsController extends Controller
             ->limit(5)
             ->get()
             ->map(function ($r) {
-                $u = \App\Models\User::find($r->assigned_to);
+                $u = User::find($r->assigned_to);
+
                 return [
                     'user_id' => $r->assigned_to,
                     'email' => $u?->email,

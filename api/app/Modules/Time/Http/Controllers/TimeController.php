@@ -84,7 +84,7 @@ class TimeController extends Controller
         abort_if(
             $entry->user_id !== $this->userId($request),
             403,
-            "Can only stop your own timer",
+            'Can only stop your own timer',
         );
 
         $this->stopEntry($entry);
@@ -168,7 +168,7 @@ class TimeController extends Controller
         abort_if(
             $entry->user_id !== $this->userId($request),
             403,
-            "Can only delete your own time entry",
+            'Can only delete your own time entry',
         );
         $entry->delete();
 

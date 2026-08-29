@@ -2,9 +2,11 @@
 
 namespace Tests\Feature;
 
+use App\Models\User;
 use App\Modules\Messagerie\Models\Conversation;
 use App\Modules\Messagerie\Models\Message;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Http;
 use Tests\TestCase;
 
 /**
@@ -234,5 +236,117 @@ class MessagerieTest extends TestCase
 
         $this->postJson("/api/conversations/{$conversation}/messages",
             ['body' => ''], $entetes)->assertStatus(422);
+    }
+
+    // ── Mentions dans un groupe ─────────────────────────────────────────
+
+    /**
+     * Crée un groupe et rend ses trois protagonistes.
+     *
+     * @return array{0: User, 1: array<string,string>, 2: User, 3: User, 4: string}
+     */
+    private function groupeDeTrois(): array
+    {
+        [$auteur, $entetes] = $this->authenticate();
+        [$nomme] = $this->authenticate();
+        [$muet] = $this->authenticate();
+
+        // Celui-ci a coupé les notifications de message. C'est le cas qui
+        // compte : dans un groupe actif, c'est le réflexe de tout le monde.
+        $muet->forceFill(['notify_messages' => false])->save();
+        $nomme->forceFill(['notify_messages' => false])->save();
+
+        $id = $this->postJson('/api/conversations', [
+            'name' => 'Équipe produit',
+            'is_group' => true,
+            'member_ids' => [$nomme->id, $muet->id],
+        ], $entetes)->assertCreated()->json('id');
+
+        return [$auteur, $entetes, $nomme, $muet, $id];
+    }
+
+    public function test_une_mention_passe_malgre_les_notifications_coupees(): void
+    {
+        // Sans cela, il n'existerait aucun moyen d'appeler quelqu'un dans un
+        // groupe qu'il a mis en sourdine — et chacun serait ramené à surveiller
+        // le fil en permanence.
+        [$auteur, $entetes, $nomme, $muet, $id] = $this->groupeDeTrois();
+
+        config(['onesignal.app_id' => 'app', 'onesignal.rest_key' => 'cle']);
+        Http::fake(['*' => Http::response(['id' => 'n1'], 200)]);
+
+        $this->postJson("/api/conversations/{$id}/messages", [
+            'body' => "@[Nommé]({$nomme->id}) tu peux regarder ?",
+        ], $entetes)->assertCreated();
+
+        Http::assertSent(function ($requete) use ($nomme) {
+            $c = $requete->data();
+
+            return $c['include_aliases']['external_id'] === [$nomme->id]
+                && $c['data']['type'] === 'message.mentioned'
+                && str_contains($c['headings']['en'], 'vous a mentionné');
+        });
+    }
+
+    public function test_les_autres_gardent_leur_preference(): void
+    {
+        // La mention ouvre une porte pour la personne nommée, pas pour tout le
+        // monde : celui qui a coupé et n'est pas nommé ne reçoit rien.
+        [$auteur, $entetes, $nomme, $muet, $id] = $this->groupeDeTrois();
+
+        config(['onesignal.app_id' => 'app', 'onesignal.rest_key' => 'cle']);
+        Http::fake(['*' => Http::response(['id' => 'n1'], 200)]);
+
+        $this->postJson("/api/conversations/{$id}/messages", [
+            'body' => "@[Nommé]({$nomme->id}) tu peux regarder ?",
+        ], $entetes)->assertCreated();
+
+        Http::assertNotSent(function ($requete) use ($muet) {
+            $cibles = $requete->data()['include_aliases']['external_id'] ?? [];
+
+            return in_array($muet->id, $cibles, true);
+        });
+    }
+
+    public function test_le_balisage_ne_part_pas_dans_la_notification(): void
+    {
+        // « @[Fidèle](8c1f…) tu peux voir ? » sur un écran verrouillé serait
+        // illisible.
+        [$auteur, $entetes, $nomme, $muet, $id] = $this->groupeDeTrois();
+
+        config(['onesignal.app_id' => 'app', 'onesignal.rest_key' => 'cle']);
+        Http::fake(['*' => Http::response(['id' => 'n1'], 200)]);
+
+        $this->postJson("/api/conversations/{$id}/messages", [
+            'body' => "@[Nommé]({$nomme->id}) tu peux regarder ?",
+        ], $entetes)->assertCreated();
+
+        Http::assertSent(function ($requete) use ($nomme) {
+            $corps = $requete->data()['contents']['en'];
+
+            return str_contains($corps, '@Nommé')
+                && ! str_contains($corps, $nomme->id);
+        });
+    }
+
+    public function test_mentionner_un_non_membre_ne_notifie_personne(): void
+    {
+        // L'identifiant vient du client : le croire sur parole ferait fuiter le
+        // contenu d'un fil à quelqu'un qui n'y a pas accès.
+        [$auteur, $entetes, $nomme, $muet, $id] = $this->groupeDeTrois();
+        [$etranger] = $this->authenticate();
+
+        config(['onesignal.app_id' => 'app', 'onesignal.rest_key' => 'cle']);
+        Http::fake(['*' => Http::response(['id' => 'n1'], 200)]);
+
+        $this->postJson("/api/conversations/{$id}/messages", [
+            'body' => "@[Intrus]({$etranger->id}) regarde",
+        ], $entetes)->assertCreated();
+
+        Http::assertNotSent(function ($requete) use ($etranger) {
+            $cibles = $requete->data()['include_aliases']['external_id'] ?? [];
+
+            return in_array($etranger->id, $cibles, true);
+        });
     }
 }

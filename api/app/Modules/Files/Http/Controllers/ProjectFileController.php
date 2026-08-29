@@ -3,12 +3,12 @@
 namespace App\Modules\Files\Http\Controllers;
 
 use App\Http\Controllers\Controller;
-use App\Mail\ProjectDocumentUploaded;
 use App\Models\PendingDocumentNotification;
 use App\Models\User;
 use App\Modules\Activity\Services\ActivityLogger;
 use App\Modules\Core\Models\Project;
 use App\Modules\Files\Models\ProjectFile;
+use App\Modules\Files\Models\ProjectFolder;
 use App\Modules\Files\Services\SupabaseStorage;
 use App\Modules\Notifications\Services\NotificationService;
 use Illuminate\Http\JsonResponse;
@@ -49,7 +49,7 @@ class ProjectFileController extends Controller
         // Si un folder_id est fourni, vérifier qu'il appartient bien au projet
         $folderId = $request->input('folder_id');
         if ($folderId) {
-            $folder = \App\Modules\Files\Models\ProjectFolder::find($folderId);
+            $folder = ProjectFolder::find($folderId);
             if (! $folder || $folder->project_id !== $project->id) {
                 abort(422, 'Invalid folder');
             }
@@ -112,7 +112,7 @@ class ProjectFileController extends Controller
         ]);
 
         if (array_key_exists('folder_id', $data) && $data['folder_id']) {
-            $folder = \App\Modules\Files\Models\ProjectFolder::find($data['folder_id']);
+            $folder = ProjectFolder::find($data['folder_id']);
             if (! $folder || $folder->project_id !== $file->project_id) {
                 abort(422, 'Invalid folder');
             }
