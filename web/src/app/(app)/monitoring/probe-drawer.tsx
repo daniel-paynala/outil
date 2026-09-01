@@ -348,71 +348,86 @@ export default function ProbeDrawer({
             </div>
 
             <div className="space-y-2">
+              {/*
+                Les trois champs sont nommés une seule fois, au-dessus de la
+                liste. Répéter les libellés à chaque ligne tripleraient la
+                hauteur d'un bloc qu'on relit rarement ; les omettre laissait
+                trois cases nues dont on ne devinait pas le rôle.
+              */}
+              <div className="flex items-center gap-2 text-[11px] uppercase tracking-wider text-[var(--muted)]">
+                <span className="w-24 shrink-0">Durée</span>
+                <span className="w-36 shrink-0">Découpage</span>
+                <span className="flex-1">Paliers</span>
+                {fenetres.length > 1 && <span className="w-8 shrink-0" />}
+              </div>
+
               {fenetres.map((fenetre, i) => (
                 <div key={i} className="flex items-start gap-2">
-                  <div className="w-28 shrink-0">
-                    <div className="flex items-center gap-1.5">
-                      <input
-                        type="number"
-                        min={1}
-                        max={720}
-                        value={fenetre.hours}
-                        onChange={(e) =>
-                          setFenetres((f) =>
-                            f.map((w, j) => {
-                              if (j !== i) return w;
-                              const hours = Number(e.target.value);
+                  <div className="flex w-24 shrink-0 items-center gap-1.5">
+                    <input
+                      type="number"
+                      min={1}
+                      max={720}
+                      value={fenetre.hours}
+                      aria-label="Durée de la fenêtre, en heures"
+                      onChange={(e) =>
+                        setFenetres((f) =>
+                          f.map((w, j) => {
+                            if (j !== i) return w;
+                            const hours = Number(e.target.value);
 
-                              // Une fenêtre calendaire ne se découpe qu'en
-                              // journées entières : « six heures depuis
-                              // minuit » changerait de longueur au fil de la
-                              // journée. On retombe en glissante plutôt que
-                              // de laisser le serveur refuser à
-                              // l'enregistrement.
-                              return {
-                                ...w,
-                                hours,
-                                mode: hours % 24 === 0 ? w.mode : "glissante",
-                              };
-                            }),
-                          )
-                        }
-                        className={`${inputClass} tabular-nums`}
-                      />
-                      <span className="text-xs text-[var(--muted)]">h</span>
-                    </div>
+                            // Une fenêtre calendaire ne se découpe qu'en
+                            // journées entières : « six heures depuis minuit »
+                            // changerait de longueur au fil de la journée. On
+                            // retombe en glissante plutôt que de laisser le
+                            // serveur refuser à l'enregistrement.
+                            return {
+                              ...w,
+                              hours,
+                              mode: hours % 24 === 0 ? w.mode : "glissante",
+                            };
+                          }),
+                        )
+                      }
+                      className={`${inputClass} tabular-nums`}
+                    />
+                    <span className="text-xs text-[var(--muted)]">h</span>
                   </div>
 
-                  <select
-                    value={fenetre.mode}
-                    onChange={(e) =>
-                      setFenetres((f) =>
-                        f.map((w, j) =>
-                          j === i
-                            ? { ...w, mode: e.target.value as WindowMode }
-                            : w,
-                        ),
-                      )
-                    }
-                    title={
-                      fenetre.mode === "glissante"
-                        ? "Les dernières heures, à tout instant"
-                        : "Depuis minuit, heure de Libreville"
-                    }
-                    className={`${inputClass} w-32 shrink-0`}
-                  >
-                    <option value="glissante">glissantes</option>
-                    <option
-                      value="calendaire"
-                      disabled={fenetre.hours % 24 !== 0}
+                  <div className="w-36 shrink-0">
+                    <select
+                      value={fenetre.mode}
+                      aria-label="Découpage de la fenêtre"
+                      onChange={(e) =>
+                        setFenetres((f) =>
+                          f.map((w, j) =>
+                            j === i
+                              ? { ...w, mode: e.target.value as WindowMode }
+                              : w,
+                          ),
+                        )
+                      }
+                      title={
+                        fenetre.mode === "glissante"
+                          ? "Les dernières heures, à tout instant"
+                          : "Depuis minuit, heure de Libreville"
+                      }
+                      className={inputClass}
                     >
-                      calendaires
-                    </option>
-                  </select>
+                      <option value="glissante">glissantes</option>
+                      <option
+                        value="calendaire"
+                        disabled={fenetre.hours % 24 !== 0}
+                      >
+                        calendaires
+                      </option>
+                    </select>
+                  </div>
 
                   <div className="min-w-0 flex-1">
                     <input
                       value={fenetre.tiers}
+                      aria-label="Paliers de notification"
                       onChange={(e) =>
                         setFenetres((f) =>
                           f.map((w, j) =>
@@ -439,7 +454,7 @@ export default function ProbeDrawer({
                         setFenetres((f) => f.filter((_, j) => j !== i))
                       }
                       aria-label={`Retirer la fenêtre de ${fenetre.hours} h`}
-                      className="rounded-md border border-[var(--border)] p-2 text-[var(--muted)] hover:text-[var(--color-danger)]"
+                      className="w-8 shrink-0 rounded-md border border-[var(--border)] p-2 text-[var(--muted)] hover:text-[var(--color-danger)]"
                     >
                       <Trash2 size={12} />
                     </button>
