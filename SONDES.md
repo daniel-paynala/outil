@@ -1,75 +1,151 @@
-# Les règles d'erreur de Paynala, et leurs sondes
+# Les erreurs de Paynala, une sonde par type
 
-Relevé dans `paynala-dashboard` (backend et composants d'affichage), pas
-d'après ce qu'on suppose du métier.
+Relevé dans `paynala-dashboard` (backend et composants d'affichage).
 
-**Les cinq requêtes plus bas se collent telles quelles** dans le champ
-« Requête » d'une sonde Arche. Rien à substituer, rien à compléter. Elles sont
-longues parce que les jointures y sont recopiées en entier : c'est le prix
-d'un copier-coller qui marche.
+**Une sonde par type d'erreur, jamais par thème.** Un « échec de
+réconciliation » n'est pas un type : c'est une famille qui mélange un partenaire
+injoignable, un client sans solde et un identifiant refusé. Ces trois-là
+n'appellent ni le même geste, ni la même personne, ni le même délai. Les compter
+ensemble donne un chiffre sur lequel on ne peut rien décider.
 
-Les expressions reprises du projet — le bloc de jointures et le `case` qui
-décide du statut — sont **identiques au caractère près** à celles de
-`filters.js`, vérifié par comparaison automatique. C'est délibéré : le jour où
-quelqu'un se demandera si la sonde compte bien la même chose que le tableau de
-bord, il pourra mettre les deux textes côte à côte. Une reformulation, même
-juste, lui aurait coûté une demi-journée de doute.
-
-Les cinq requêtes ont été analysées par la grammaire PostgreSQL réelle
-(`libpg_query`). Cela garantit qu'elles sont syntaxiquement correctes ; cela ne
-garantit pas qu'elles comptent ce que tu attends sur ta base. Le bouton
-**Essayer** est là pour ça, et la section « Avant d'enregistrer » dit quoi
-regarder.
+Les seize requêtes sont dans [`sondes/`](sondes/), une par fichier, **complètes
+et collables telles quelles** dans le champ « Requête » d'une sonde Arche.
 
 ---
 
-## Les règles
+## Comment c'est découpé
+
+Deux axes qui répondent à deux questions différentes. Le même échec est compté
+une fois sur chacun — c'est voulu, et c'est ce qui permet de croiser.
+
+### Axe « où » — la jambe qui casse
+
+| # | Fichier | Ce qu'elle compte |
+|---|---|---|
+| 01 | `01-cp-echec.sql` | CP a répondu non |
+| 02 | `02-mc1-echec.sql` | MC1 (ou MC) a répondu non |
+| 03 | `03-mc2-echec.sql` | MC2 a répondu non — Rengus Digital seulement |
+| 04 | `04-cp-sans-log.sql` | CP n'a laissé aucun log |
+| 05 | `05-mc1-sans-log.sql` | MC1 (ou MC) n'a laissé aucun log |
+| 06 | `06-mc2-sans-log.sql` | MC2 n'a laissé aucun log — Rengus seulement |
+
+### Axe « quoi » — le type d'erreur
+
+| # | Fichier | Ce qu'elle compte |
+|---|---|---|
+| 07 | `07-timeout.sql` | Time-out, quelle que soit la forme du log |
+| 08 | `08-invalid-transaction-id.sql` | Identifiant de transaction refusé |
+| 09 | `09-solde-insuffisant.sql` | Solde insuffisant |
+| 10 | `10-coupure-reseau.sql` | Connexion coupée : socket, DNS, refus |
+| 11 | `11-infrastructure-non-classee.sql` | Panne technique d'une forme inconnue |
+| 12 | `12-echec-non-detaille.sql` | Airtel refuse sans dire pourquoi |
+| 13 | `13-refus-metier-non-classe.sql` | Refus métier d'un libellé inconnu |
+
+### Axe « paiement » — hors réconciliation
+
+| # | Fichier | Ce qu'elle compte |
+|---|---|---|
+| 14 | `14-paiements-en-echec.sql` | Paiements en statut `FAILED` |
+| 15 | `15-silence-production.sql` | Minutes depuis le dernier paiement |
+
+Et `00-decouverte-des-libelles.sql`, qui n'est **pas** une sonde — voir plus bas.
+
+---
+
+## La partition est stricte, et c'est vérifié
+
+Les sept sondes de type forment une partition : **tout échec tombe dans
+exactement une**. Ni deux, ni zéro.
+
+Ce n'est pas une intention, c'est une propriété testée. La logique des sept
+clauses a été rejouée sur quinze libellés couvrant chaque forme documentée plus
+des inconnus ; chacun atterrit dans une seule sonde.
+
+Cela se contrôle aussi en production, et c'est le contrôle qui compte :
+
+```
+01 + 02 + 03  =  07 + 08 + 09 + 10 + 11 + 12 + 13
+```
+
+Les deux côtés comptent les mêmes jambes en échec, découpées autrement. S'ils
+divergent, une sonde a été modifiée sans que la partition suive.
+
+### Les deux filets, et ce qu'ils veulent dire
+
+Les sondes **11** et **13** attrapent ce qu'aucune autre ne reconnaît. Elles ne
+sont pas des fourre-tout : ce sont les deux seules qui peuvent te prévenir d'un
+type d'erreur que personne n'avait anticipé.
+
+**Si 13 monte pendant que 08 reste à zéro, c'est mon motif qui est faux, pas
+Airtel qui va bien.** Lance alors `00-decouverte-des-libelles.sql` : le libellé
+réel sera en tête. C'est la seule façon dont ce découpage se corrige tout seul.
+
+---
+
+## D'abord : la reconnaissance
+
+`sondes/00-decouverte-des-libelles.sql` **ne se colle pas dans Arche** — elle
+rend des lignes, pas un nombre. Elle se lance dans DBeaver ou dans l'éditeur SQL
+de Supabase, sur trente jours.
+
+Elle liste chaque libellé d'erreur distinct, son nombre d'occurrences et le
+nombre de jambes touchées.
+
+Lance-la avant tout le reste. Trois des sondes de type — 07, 08, 09 — reposent
+sur des motifs de texte que **le dépôt de référence ne contient pas** :
+`filters.js` ne documente que deux exemples, `"Proxy request failed / socket
+hang up"` et `"Solde insuffisant…"`. Le reste, je l'ai construit sur les formes
+d'erreur usuelles de Node et sur les libellés que tu as cités.
+
+Un motif faux ne casse rien de visible : la sonde s'installe et ne signale
+jamais rien. C'est le pire défaut possible — c'est précisément à elle qu'on fait
+confiance. Les filets 11 et 13 sont là pour ça, mais la reconnaissance est plus
+rapide.
+
+Les motifs actuels, à confirmer :
+
+| Sonde | Motifs |
+|---|---|
+| 07 | `timeout`, `time out`, `timed out`, `ETIMEDOUT`, `ESOCKETTIMEDOUT` |
+| 08 | `invalid…transaction`, `transaction…invalide` |
+| 09 | `solde…insuffisant`, `insufficient`, `balance` |
+| 10 | `socket hang up`, `ECONNRESET`, `ECONNREFUSED`, `ENETUNREACH`, `EAI_AGAIN`, `EHOSTUNREACH` |
+
+---
+
+## Les règles reprises du projet
 
 ### 1. Trois états, jamais deux
 
-`SUCCESS`, `FAILED`, `MISSING`. **Un log absent n'est pas un échec.** Ce n'est
-pas une commodité d'affichage : `failedBeneficiaries.js` l'écrit noir sur blanc
-(« never "log absent", only a log that came back unsuccessful ») et
-`walletFailures.js` ne compte que `= 'FAILED'`.
+`SUCCESS`, `FAILED`, `MISSING`. **Un log absent n'est pas un échec.**
+`failedBeneficiaries.js` l'écrit noir sur blanc (« never "log absent", only a log
+that came back unsuccessful ») et `walletFailures.js` ne compte que `= 'FAILED'`.
 
-Les deux appellent des gestes différents. Un `FAILED` dit qu'Airtel a répondu
-non — solde insuffisant, numéro invalide. Un `MISSING` dit que la
-réconciliation n'a jamais été journalisée : un maillon de la chaîne s'est tu.
-Les additionner rendrait la panne d'infrastructure invisible derrière le bruit
-des refus ordinaires.
-
-D'où **deux sondes séparées** (1 et 2), jamais une.
+Un `FAILED` dit qu'Airtel a répondu non. Un `MISSING` dit que la réconciliation
+n'a jamais été journalisée : un maillon s'est tu. D'où deux jeux de sondes
+séparés — 01-03 contre 04-06.
 
 ### 2. L'autorité est le drapeau du log, pas le code HTTP
 
-```sql
-response->'status'->>'success' = 'true'
-```
-
-`http_code` est fréquemment `NULL` **même sur des succès authentiques**, sur
-les canaux API et RECOVERY — constaté sur les données réelles. Une sonde qui
-compterait `http_code >= 400` raterait une partie des échecs et en inventerait
+`response->'status'->>'success' = 'true'`. `http_code` est fréquemment `NULL`
+**même sur des succès authentiques**, sur les canaux API et RECOVERY. Une sonde
+qui compterait `http_code >= 400` raterait des échecs et en inventerait
 d'autres.
 
 ### 3. Quatre canaux seulement se réconcilient
 
-`WEB`, `USSD`, `API`, `RECOVERY`.
-
-`webview` et `backend_cron` **ne portent jamais** de jambe CP/MC — ce n'est pas
-un défaut, ces flux ne journalisent simplement pas la réconciliation. Les
-inclure produirait un torrent de `MISSING` permanent, et une sonde qui hurle en
-continu ne se lit plus.
+`WEB`, `USSD`, `API`, `RECOVERY`. `webview` et `backend_cron` ne portent jamais
+de jambe CP/MC — ce n'est pas un défaut. Les inclure produirait un torrent de
+`MISSING` permanent, et une sonde qui hurle en continu ne se lit plus.
 
 ### 4. On ne réconcilie que ce qui a réussi
 
-`p.status = 'SUCCESS'`. Un paiement en échec n'a pas de jambe à attendre :
-la compter manquante n'aurait pas de sens.
+`p.status = 'SUCCESS'`. Un paiement en échec n'a pas de jambe à attendre.
 
 ### 5. Une ligne par jambe, pas par paiement
 
-Un même paiement peut voir MC1 **et** MC2 échouer. Compter les paiements
-sous-estimerait l'incident d'un facteur deux — et c'est ce qui dicte l'unité de
-la sonde 1.
+Un même paiement peut voir MC1 **et** MC2 échouer. Le socle déplie donc les
+trois jambes en trois lignes, et toutes les sondes comptent des lignes.
 
 ### 6. Le suffixe dépend du canal, le nombre de jambes du marchand
 
@@ -78,44 +154,38 @@ la sonde 1.
 | `USSD` | `airtel_money_id \|\| 'CP'` | `…'MC1'` ou `…'MC'` | `…'MC2'` |
 | WEB / API / RECOVERY | `request_id \|\| '_CP'` | `…'_MC1'` ou `…'_MC'` | `…'_MC2'` |
 
-**Rengus Digital** a trois wallets (`_MC1` / `_MC2`), tout le monde en a deux
-(`_MC` sans chiffre). Reconnu par le nom du marchand et non par son
-identifiant — délibéré, pour survivre à un changement d'environnement.
+**Rengus Digital** a trois wallets, tout le monde en a deux (`_MC` sans
+chiffre). Reconnu par le nom, pas par l'identifiant — pour survivre à un
+changement d'environnement.
 
 > **Le piège de MC2.** La jointure `mc2` porte déjà
 > `where m.name = 'Rengus Digital'` : pour tout autre marchand elle ne matche
-> jamais, donc `MISSING`. Sans effet quand on compte les `FAILED` (sonde 1) —
-> mais la sonde 2, qui compte justement les `MISSING`, doit répéter ce filtre
-> dans son `count`, sinon elle compte **chaque paiement de tous les autres
-> marchands**. C'est l'erreur la plus facile à commettre ici, et elle
-> passerait inaperçue : le chiffre serait simplement gros.
+> jamais, donc `MISSING`. Le socle neutralise ce piège une fois pour toutes
+> avec sa colonne `concernee` — sans elle, la sonde 06 compterait **chaque
+> paiement de tous les autres marchands**, et son chiffre serait simplement
+> gros sans que rien ne semble anormal.
 
-### 7. Deux formes de raison d'échec, deux gestes différents
+### 7. Deux formes de log, et la colonne qui les distingue
 
-| Forme | JSON | Exemple |
+| Forme | JSON | Colonne `infrastructure` |
 |---|---|---|
-| Infrastructure | `response->>'error'` + `message` | `Proxy request failed — socket hang up` |
-| Métier | `response->'status'->>'message'` | `Solde insuffisant` |
+| Infrastructure | `{"error": …, "message": …}` | `true` |
+| Métier | `{"status": {"success": false, "message": …}}` | `false` |
 
-« Solde insuffisant » est le métier qui fonctionne. « socket hang up » est
-Airtel injoignable. Les mélanger noierait la panne dans le bruit — d'où la
-sonde 3, avec des paliers bien plus bas.
+C'est la ligne de partage principale de l'axe « quoi » : 10 et 11 sont
+techniques, 08, 09, 12 et 13 sont métier. Seule la 07 traverse les deux — un
+time-out peut se présenter sous les deux formes.
 
-### 8. La raison d'un paiement échoué vient d'ailleurs
-
-Pas de `response->'status'`, mais de
-`response->'data'->'transaction'->>'message'`, filtré sur `status = 'TF'`.
-
-### 9. `request.pin` ne sort jamais de la base
+### 8. `request.pin` ne sort jamais de la base
 
 Interdiction explicite dans `failedBeneficiaries.js`. Les sondes ne rendent que
 des nombres, donc la question ne se pose pas — elle se posera au premier qui
 voudra une sonde qui remonte un détail.
 
-### 10. Ce que le projet établit pour l'affichage
+### 9. Ce que le projet établit pour l'affichage
 
 - `--status-good` / `--status-critical` sont réservées à Succès / Échec et
-  **jamais réutilisées pour une série de graphique**.
+  jamais réutilisées pour une série de graphique.
 - `--status-warning` est la couleur de `MISSING` — ni bonne, ni critique.
 - La raison n'apparaît que sous une jambe non réussie, en petit et en gris :
   elle explique, elle n'alerte pas.
@@ -124,358 +194,234 @@ voudra une sonde qui remonte un détail.
 
 ---
 
-## Le choix des unités
+## Fidélité au projet d'origine
 
-L'unité n'est pas une étiquette de colonne. Elle est lue **dans le corps de la
-notification**, qu'Arche compose ainsi :
+Le bloc de jointures et le `case` du statut sont recopiés **au caractère près**
+depuis `filters.js`, vérifié par comparaison automatique. Le jour où quelqu'un
+se demandera si une sonde compte la même chose que le tableau de bord, il
+mettra les deux textes côte à côte.
 
-```
-{valeur} {unité} sur {fenêtre} h (palier {palier}).
-```
+Trois écarts, tous assumés :
 
-Elle est donc lue sur un écran verrouillé, la nuit, par quelqu'un qui n'a pas
-le contexte sous les yeux. Trois exigences en découlent, et chaque unité
-ci-dessous est choisie pour y répondre :
+**`?` devient `jsonb_exists`.** `WALLET_REASON_EXPR` écrit `response ? 'error'`.
+La connexion de supervision utilise `PDO::ATTR_EMULATE_PREPARES` — le pooler
+Supabase ne supporte pas les requêtes préparées nommées — donc PDO analyse le
+SQL lui-même et prend le `?` pour un paramètre positionnel. Mesuré : la requête
+est refusée avant d'atteindre Postgres.
 
-**Elle doit faire une phrase.** « 12 jambes sur 24 h » ne se lit pas ; « 12
-réconciliations en échec sur 24 h » se lit. C'est pourquoi les unités portent
-l'état (« en échec », « sans log ») et pas seulement l'objet.
+**Les trois jambes sont dépliées en lignes.** Le dashboard les garde en colonnes
+parce qu'il les affiche côte à côte ; une sonde compte, et compter des lignes
+est ce qui rend la règle 5 automatique plutôt que recopiée trois fois.
 
-**Elle doit distinguer les sondes entre elles.** Quatre des cinq comptent des
-choses qui ratent. « échecs » tout court laisserait le lecteur incapable de
-dire si la sonde 1 ou la sonde 4 vient de sonner — et ces deux-là n'appellent
-pas le même appel téléphonique.
-
-**Elle doit nommer ce qu'on compte, jamais d'où ça vient.** « lignes
-d'airtel_logs » serait exact et inutilisable : personne n'agit sur une ligne de
-table. « réconciliations » désigne l'objet métier, celui dont on peut dire
-qu'il va mal.
-
-| Sonde | Unité | Pourquoi celle-là |
-|---|---|---|
-| 1 | `réconciliations en échec` | Le pluriel porte la règle 5 : on compte des réconciliations, pas des paiements, parce qu'un paiement peut en rater deux. |
-| 2 | `réconciliations sans log` | « sans log » et non « manquantes » : ce qui manque est la trace, pas la réconciliation — elle a peut-être eu lieu. La nuance décide de qui on appelle. |
-| 3 | `refus techniques Airtel` | Nomme le responsable. « erreurs » aurait fait chercher chez nous ; le mot « Airtel » dans la notification économise le premier quart d'heure. |
-| 4 | `paiements en échec` | Le seul endroit où « paiement » est le bon objet — c'est la seule sonde qui ne parle pas de réconciliation. |
-| 5 | `minutes sans paiement` | Une durée, pas un compte. C'est la seule sonde dont la valeur n'est pas un dénombrement, et l'unité doit le dire pour qu'on ne lise pas « 95 paiements ». |
+**`request` n'est pas lu.** Un blob jsonb dont un dénombrement n'a que faire.
 
 ---
 
 ## Avant d'enregistrer une sonde
 
-**`?` est impraticable.** La connexion de supervision utilise
-`PDO::ATTR_EMULATE_PREPARES` — le pooler Supabase ne supporte pas les requêtes
-préparées nommées. PDO analyse donc le SQL lui-même et prend l'opérateur jsonb
-`?` pour un paramètre positionnel : la requête est refusée avant d'atteindre
-Postgres. Vérifié : `response ? 'error'` fait voir à PDO **deux** paramètres là
-où la sonde n'en fournit qu'un. On écrit `jsonb_exists(response, 'error')`.
-
-**`:depuis` est obligatoire.** La sonde reçoit exactement un paramètre. Une
+**`:depuis` est obligatoire.** La sonde reçoit exactement un paramètre ; une
 requête qui ne l'utilise pas échoue sur « Invalid parameter number ». Elle peut
-en revanche s'en servir plusieurs fois : c'est permis en mode émulé, et la
-sonde 5 le fait.
+s'en servir plusieurs fois — permis en mode émulé, et la sonde 15 le fait.
 
-**Le cast `::` est à proscrire, pour la même raison que `?`.** `:depuis` est un
-paramètre nommé ; `::timestamptz` ressemble à s'y méprendre à un paramètre
-nommé `:timestamptz`. Le premier jet de la sonde 5 en contenait deux, et le
-contrôle les a vus comme des paramètres que personne ne fournirait jamais. On
-écrit `cast(x as timestamptz)` — plus long, mais sans ambiguïté possible pour
-l'analyseur qui lit la requête avant Postgres.
+**Le cast `::` est à proscrire, pour la même raison que `?`.**
+`::timestamptz` est indistinguable d'un paramètre nommé `:timestamptz`. On écrit
+`cast(x as timestamptz)`. Un premier jet de la sonde 15 en contenait deux ; le
+contrôle les a vus.
 
-**Une colonne nommée `valeur`, entière.** `NULL` est lu comme zéro ; une
-absence de ligne aussi.
+**Une colonne nommée `valeur`, entière.** `NULL` est lu comme zéro, une absence
+de ligne aussi.
 
-**8 secondes.** `DatabaseConnector::TIMEOUT_MS`. La requête wallet du dashboard
-peut prendre 30 s, mais sur des mois d'historique : sur 24 h le volume est sans
-commune mesure. À confirmer au bouton **Essayer**.
+**8 secondes.** `DatabaseConnector::TIMEOUT_MS`. Les treize sondes 01-13
+partagent le même socle coûteux et tournent toutes au même rythme : c'est
+treize fois la charge d'une seule. Si l'une passe de justesse au bouton
+**Essayer**, les treize ensemble ne passeront pas. Les 14 et 15, sans jointure,
+resteront debout quoi qu'il arrive — c'est leur raison d'être autant que leur
+contenu.
 
 **Le fuseau.** Arche calcule `:depuis` chez lui et l'envoie en texte. Si
 `payment.created_at` est un `timestamp` sans fuseau dans un autre fuseau que
-celui d'Arche, le décalage est silencieux — la sonde comptera une fenêtre
-décalée sans jamais se plaindre. Le test : lancer **Essayer** sur 24 h et
-comparer au même chiffre lu sur le dashboard Paynala pour la même période. S'ils
-diffèrent, c'est là qu'il faut chercher.
+celui d'Arche, le décalage est silencieux. Le test : lancer **Essayer** sur 24 h
+et comparer au même chiffre sur le dashboard Paynala pour la même période.
 
 ---
 
-## Les sondes
+## Unités et paliers
 
-### Sonde 1 — Réconciliations en échec
+L'unité est lue **dans le corps de la notification**, qu'Arche compose ainsi :
 
-*Unité : `réconciliations en échec`*
-*24 h : `3, 10, 20, 40, 60, 100` · 48 h : `10, 40, 100`*
-
-Le chiffre de tête. Un `FAILED` par jambe (règle 5), sur les seuls canaux
-réconciliables (règle 3), sur les seuls paiements réussis (règle 4).
-
-Les paliers reprennent ceux que tu avais posés. Le premier à 3 dit la règle du
-métier : trois échecs de réconciliation dans une journée sont déjà anormaux.
-
-```sql
-select
-    count(*) filter (where
-        case
-            when cp.request_id is null then 'MISSING'
-            when cp.response->'status'->>'success' = 'true' then 'SUCCESS'
-            else 'FAILED'
-        end = 'FAILED')
-  + count(*) filter (where
-        case
-            when mc1.request_id is null then 'MISSING'
-            when mc1.response->'status'->>'success' = 'true' then 'SUCCESS'
-            else 'FAILED'
-        end = 'FAILED')
-  + count(*) filter (where
-        case
-            when mc2.request_id is null then 'MISSING'
-            when mc2.response->'status'->>'success' = 'true' then 'SUCCESS'
-            else 'FAILED'
-        end = 'FAILED')
-    as valeur
-from payment p
-join merchant m on m.id = p.merchant_id
-left join lateral (
-    select al.request_id, al.response
-    from airtel_logs al
-    where al.request_id =
-        case
-            when p.channel = 'USSD' then p.airtel_money_id || 'CP'
-            else p.request_id || '_CP'
-        end
-    order by al.created_at desc
-    limit 1
-) cp on true
-left join lateral (
-    select al.request_id, al.response
-    from airtel_logs al
-    where al.request_id =
-        case
-            when m.name = 'Rengus Digital' then
-                case when p.channel = 'USSD' then p.airtel_money_id || 'MC1'
-                     else p.request_id || '_MC1' end
-            else
-                case when p.channel = 'USSD' then p.airtel_money_id || 'MC'
-                     else p.request_id || '_MC' end
-        end
-    order by al.created_at desc
-    limit 1
-) mc1 on true
-left join lateral (
-    select al.request_id, al.response
-    from airtel_logs al
-    where m.name = 'Rengus Digital'
-      and al.request_id =
-        case
-            when p.channel = 'USSD' then p.airtel_money_id || 'MC2'
-            else p.request_id || '_MC2'
-        end
-    order by al.created_at desc
-    limit 1
-) mc2 on true
-where p.created_at >= :depuis
-  and p.channel in ('WEB', 'USSD', 'API', 'RECOVERY')
-  and p.status = 'SUCCESS'
+```
+{valeur} {unité} sur {fenêtre} h (palier {palier}).
 ```
 
-### Sonde 2 — Réconciliations sans log
+Donc sur un écran verrouillé, la nuit, par quelqu'un sans contexte. Elle doit
+faire une phrase, distinguer la sonde de ses quatorze voisines, et nommer
+l'objet métier plutôt que la table. C'est ce qui écarte « jambes » — *12 jambes
+sur 24 h* ne se lit pas.
 
-*Unité : `réconciliations sans log`*
-*24 h : `5, 20, 50, 100` · 48 h : `20, 100`*
+| # | Unité | 24 h | 48 h | Pourquoi ces paliers |
+|---|---|---|---|---|
+| 01 | `échecs CP` | `3, 10, 20, 40, 60, 100` | `10, 40, 100` | CP est la première jambe : elle casse rarement, et quand elle casse le reste suit. |
+| 02 | `échecs MC1` | `3, 10, 20, 40, 60, 100` | `10, 40, 100` | Même échelle que CP, pour que les deux chiffres se comparent à l'œil. |
+| 03 | `échecs MC2` | `3, 10, 20, 40` | `10, 40` | Un seul marchand, donc un volume bien moindre : la même échelle ne sonnerait jamais. |
+| 04 | `CP sans log` | `5, 20, 50, 100` | `20, 100` | 5 et non 3 : un log peut arriver en retard, et la sonde en attrape en vol. |
+| 05 | `MC1 sans log` | `5, 20, 50, 100` | `20, 100` | Idem. |
+| 06 | `MC2 sans log` | `5, 20, 50` | `20` | Idem, à l'échelle d'un marchand. |
+| 07 | `time-outs Airtel` | `1, 3, 10, 30` | `5, 30` | Le premier palier à **1**. Un time-out isolé est déjà une information : ce n'est pas du métier qui refuse. |
+| 08 | `identifiants refusés` | `1, 5, 20, 50` | `10, 50` | À 1 aussi : un identifiant refusé signale presque toujours un défaut de génération, pas un cas isolé. |
+| 09 | `soldes insuffisants` | `20, 100, 300, 1000` | `100, 1000` | Le métier qui fonctionne. Paliers hauts : on guette un décrochage, pas un incident. |
+| 10 | `coupures réseau` | `1, 3, 10, 30` | `5, 30` | Comme 07 : Airtel injoignable. |
+| 11 | `pannes techniques inconnues` | `1, 3, 10` | `3, 10` | À 1, parce que le premier exemplaire est ce qu'on veut voir : il nomme un type qu'aucune sonde n'attrape encore. |
+| 12 | `refus sans motif` | `5, 20, 50` | `20, 50` | Un refus non détaillé est aveuglant en nombre : il empêche de savoir ce qui se passe. |
+| 13 | `refus métier inconnus` | `3, 10, 30, 100` | `10, 100` | À 3 : au-delà, ce n'est plus un cas isolé mais un libellé nouveau qui mérite sa propre sonde. |
+| 14 | `paiements en échec` | `10, 50, 100, 250, 500` | `50, 250` | Un volume d'échecs est normal ; on guette le décrochage. |
+| 15 | `minutes sans paiement` | `30, 60, 180, 360` | — | **À régler après observation** — voir plus bas. |
 
-Règle 1 : ce n'est pas un échec, c'est un silence. Noter le
-`m.name = 'Rengus Digital'` **dans le troisième `count`** — sans lui, cette
-sonde compterait chaque paiement de tous les autres marchands (règle 6).
+### La sonde 15 mérite son propre paragraphe
 
-Premier palier à 5 et non à 3 : un log peut arriver en retard, et une sonde
-qui tourne toutes les cinq minutes en attrapera quelques-uns en vol. Trois
-seraient du bruit ; cinq ne le sont plus.
+Les quatorze autres comptent ce qui va mal. **Aucune ne se déclenche quand plus
+rien n'arrive** — et c'est la panne la plus grave, parce qu'un compteur
+d'échecs à zéro se lit exactement comme un système en bonne santé.
 
-```sql
-select
-    count(*) filter (where
-        case
-            when cp.request_id is null then 'MISSING'
-            when cp.response->'status'->>'success' = 'true' then 'SUCCESS'
-            else 'FAILED'
-        end = 'MISSING')
-  + count(*) filter (where
-        case
-            when mc1.request_id is null then 'MISSING'
-            when mc1.response->'status'->>'success' = 'true' then 'SUCCESS'
-            else 'FAILED'
-        end = 'MISSING')
-  + count(*) filter (where
-        m.name = 'Rengus Digital'
-        and case
-            when mc2.request_id is null then 'MISSING'
-            when mc2.response->'status'->>'success' = 'true' then 'SUCCESS'
-            else 'FAILED'
-        end = 'MISSING')
-    as valeur
-from payment p
-join merchant m on m.id = p.merchant_id
-left join lateral (
-    select al.request_id, al.response
-    from airtel_logs al
-    where al.request_id =
-        case
-            when p.channel = 'USSD' then p.airtel_money_id || 'CP'
-            else p.request_id || '_CP'
-        end
-    order by al.created_at desc
-    limit 1
-) cp on true
-left join lateral (
-    select al.request_id, al.response
-    from airtel_logs al
-    where al.request_id =
-        case
-            when m.name = 'Rengus Digital' then
-                case when p.channel = 'USSD' then p.airtel_money_id || 'MC1'
-                     else p.request_id || '_MC1' end
-            else
-                case when p.channel = 'USSD' then p.airtel_money_id || 'MC'
-                     else p.request_id || '_MC' end
-        end
-    order by al.created_at desc
-    limit 1
-) mc1 on true
-left join lateral (
-    select al.request_id, al.response
-    from airtel_logs al
-    where m.name = 'Rengus Digital'
-      and al.request_id =
-        case
-            when p.channel = 'USSD' then p.airtel_money_id || 'MC2'
-            else p.request_id || '_MC2'
-        end
-    order by al.created_at desc
-    limit 1
-) mc2 on true
-where p.created_at >= :depuis
-  and p.channel in ('WEB', 'USSD', 'API', 'RECOVERY')
-  and p.status = 'SUCCESS'
-```
+Celle-ci s'inverse : elle mesure les minutes depuis le dernier paiement et monte
+toute seule quand la production s'arrête.
 
-### Sonde 3 — Refus techniques Airtel
+Le `coalesce` n'est pas une précaution de style. Sans lui, une fenêtre
+entièrement vide rend `NULL`, que `readValue` lit comme zéro : la sonde
+annoncerait « tout va bien » au moment précis où plus rien n'arrive depuis
+vingt-quatre heures. Le repli mesure alors depuis le début de la fenêtre, ce qui
+est un minorant.
 
-*Unité : `refus techniques Airtel`*
-*24 h : `1, 3, 10, 30` · 48 h : `5, 30`*
+Ses paliers, eux, dépendent du rythme réel de nuit, que ce fichier ne connaît
+pas. Regarde le plus long trou habituel d'un dimanche à 4 h, puis pose le
+premier au-dessus. Posés trop bas, ils réveilleront quelqu'un chaque nuit — et
+une sonde qu'on apprend à ignorer ne sert plus à rien.
 
-Règle 7 : la forme `{"error": …}` du log, celle des pannes de proxy et des
-sockets coupées. Distincte de la forme métier, qui elle est le système qui
-fonctionne.
+---
 
-Paliers volontairement très bas, jusqu'à **1**. Ce n'est pas du métier qui
-refuse, c'est un partenaire injoignable : le premier mérite déjà d'être vu, et
-trois dans la journée méritent un appel. C'est la seule sonde dont le premier
-palier est à un — parce que c'est la seule où un événement isolé est déjà une
-information.
+## Le socle
+
+Les treize premières sondes partagent ce préambule mot pour mot. Il déplie les
+trois jambes en lignes, calcule leur statut et leur raison avec les expressions
+du projet, et neutralise le piège de MC2. **Seule la clause finale change d'une
+sonde à l'autre** — c'est ce qui permet d'en ajouter une en copiant un fichier
+et en changeant une ligne.
 
 ```sql
-select
-    count(*) filter (where jsonb_exists(cp.response, 'error'))
-  + count(*) filter (where jsonb_exists(mc1.response, 'error'))
-  + count(*) filter (where jsonb_exists(mc2.response, 'error'))
-    as valeur
-from payment p
-join merchant m on m.id = p.merchant_id
-left join lateral (
-    select al.request_id, al.response
-    from airtel_logs al
-    where al.request_id =
+with jambes as (
+    select
+        v.jambe,
         case
-            when p.channel = 'USSD' then p.airtel_money_id || 'CP'
-            else p.request_id || '_CP'
-        end
-    order by al.created_at desc
-    limit 1
-) cp on true
-left join lateral (
-    select al.request_id, al.response
-    from airtel_logs al
-    where al.request_id =
+            when v.request_id is null then 'MISSING'
+            when v.response->'status'->>'success' = 'true' then 'SUCCESS'
+            else 'FAILED'
+        end as statut,
         case
-            when m.name = 'Rengus Digital' then
-                case when p.channel = 'USSD' then p.airtel_money_id || 'MC1'
-                     else p.request_id || '_MC1' end
-            else
-                case when p.channel = 'USSD' then p.airtel_money_id || 'MC'
-                     else p.request_id || '_MC' end
-        end
-    order by al.created_at desc
-    limit 1
-) mc1 on true
-left join lateral (
-    select al.request_id, al.response
-    from airtel_logs al
-    where m.name = 'Rengus Digital'
-      and al.request_id =
-        case
-            when p.channel = 'USSD' then p.airtel_money_id || 'MC2'
-            else p.request_id || '_MC2'
-        end
-    order by al.created_at desc
-    limit 1
-) mc2 on true
-where p.created_at >= :depuis
-  and p.channel in ('WEB', 'USSD', 'API', 'RECOVERY')
-  and p.status = 'SUCCESS'
+            when v.request_id is null then 'Log Airtel absent'
+            when v.response->'status'->>'success' = 'true' then null
+            when jsonb_exists(v.response, 'error') then
+                v.response->>'error' ||
+                case when v.response->>'message' is not null
+                     then ' \u2014 ' || (v.response->>'message') else '' end
+            else coalesce(
+                v.response->'status'->>'message',
+                '\u00c9chec non d\u00e9taill\u00e9' || case when v.http_code is not null
+                     then ' (HTTP ' || v.http_code || ')' else '' end
+            )
+        end as raison,
+        jsonb_exists(v.response, 'error') as infrastructure
+    from payment p
+    join merchant m on m.id = p.merchant_id
+    left join lateral (
+        select al.request_id, al.http_code, al.response
+        from airtel_logs al
+        where al.request_id =
+            case
+                when p.channel = 'USSD' then p.airtel_money_id || 'CP'
+                else p.request_id || '_CP'
+            end
+        order by al.created_at desc
+        limit 1
+    ) cp on true
+    left join lateral (
+        select al.request_id, al.http_code, al.response
+        from airtel_logs al
+        where al.request_id =
+            case
+                when m.name = 'Rengus Digital' then
+                    case when p.channel = 'USSD' then p.airtel_money_id || 'MC1'
+                         else p.request_id || '_MC1' end
+                else
+                    case when p.channel = 'USSD' then p.airtel_money_id || 'MC'
+                         else p.request_id || '_MC' end
+            end
+        order by al.created_at desc
+        limit 1
+    ) mc1 on true
+    left join lateral (
+        select al.request_id, al.http_code, al.response
+        from airtel_logs al
+        where m.name = 'Rengus Digital'
+          and al.request_id =
+            case
+                when p.channel = 'USSD' then p.airtel_money_id || 'MC2'
+                else p.request_id || '_MC2'
+            end
+        order by al.created_at desc
+        limit 1
+    ) mc2 on true
+    cross join lateral (values
+        ('CP', cp.request_id, cp.http_code, cp.response, true),
+        (case when m.name = 'Rengus Digital' then 'MC1' else 'MC' end,
+         mc1.request_id, mc1.http_code, mc1.response, true),
+        ('MC2', mc2.request_id, mc2.http_code, mc2.response,
+         m.name = 'Rengus Digital')
+    ) as v(jambe, request_id, http_code, response, concernee)
+    where p.created_at >= :depuis
+      and p.channel in ('WEB', 'USSD', 'API', 'RECOVERY')
+      and p.status = 'SUCCESS'
+      and v.concernee
+)
 ```
 
-### Sonde 4 — Paiements en échec
-
-*Unité : `paiements en échec`*
-*24 h : `10, 50, 100, 250, 500` · 48 h : `50, 250`*
-
-Niveau paiement, pas réconciliation. **Aucune jointure** : c'est la sonde la
-moins chère, et la seule qui répondra encore le jour où `airtel_logs` sera trop
-lourd pour les autres. À garder pour cette raison même si elle paraît redondante.
-
-Paliers bien plus hauts : un volume d'échecs de paiement est normal — clients
-au solde vide, numéros erronés. Ce qu'on guette ici est un décrochage, pas un
-incident.
+Puis, selon la sonde :
 
 ```sql
 select count(*) as valeur
-from payment p
-where p.created_at >= :depuis
-  and p.status = 'FAILED'
+from jambes
+where statut = 'FAILED'
+  and jambe = 'CP'
 ```
-
-### Sonde 5 — Silence de la production
-
-*Unité : `minutes sans paiement`*
-*24 h : `30, 60, 180, 360`*
-
-Les quatre sondes ci-dessus comptent ce qui va mal. **Aucune ne se déclenche
-quand plus rien n'arrive** — et c'est la panne la plus grave, parce qu'un
-compteur d'échecs à zéro se lit exactement comme un système en bonne santé.
-
-Celle-ci s'inverse : elle mesure les minutes écoulées depuis le dernier
-paiement, et monte toute seule quand la production s'arrête.
-
-Le `coalesce` n'est pas une précaution de style. Sans lui, une fenêtre
-entièrement vide rend `NULL`, que `readValue` interprète comme zéro : la sonde
-annoncerait « tout va bien » au moment précis où plus rien n'arrive depuis
-vingt-quatre heures. Le repli mesure alors depuis le début de la fenêtre, ce
-qui est un minorant — la production est peut-être arrêtée depuis plus
-longtemps.
-
-**Les paliers sont à régler après observation.** Ils dépendent du rythme réel
-de nuit, que ce fichier ne connaît pas. Regarde d'abord le plus long trou
-habituel d'un dimanche à 4 h du matin, puis pose le premier palier au-dessus.
-Posés trop bas, ils réveilleront quelqu'un chaque nuit — et une sonde qu'on
-apprend à ignorer ne sert plus à rien.
 
 ```sql
-select cast(coalesce(
-    extract(epoch from (now() - max(p.created_at))) / 60,
-    extract(epoch from (now() - cast(:depuis as timestamptz))) / 60
-) as int) as valeur
-from payment p
-where p.created_at >= :depuis
+select count(*) as valeur
+from jambes
+where statut = 'FAILED'
+  and (raison ilike '%timeout%'
+       or raison ilike '%time out%'
+       or raison ilike '%timed out%'
+       or raison ilike '%ETIMEDOUT%'
+       or raison ilike '%ESOCKETTIMEDOUT%')
 ```
+
+```sql
+select count(*) as valeur
+from jambes
+where statut = 'FAILED'
+  and not infrastructure
+  and not (raison ilike '%timeout%'
+       or raison ilike '%time out%'
+       or raison ilike '%timed out%'
+       or raison ilike '%ETIMEDOUT%'
+       or raison ilike '%ESOCKETTIMEDOUT%')
+  and not (raison ilike '%invalid%transaction%'
+       or raison ilike '%transaction%invalide%')
+  and not (raison ilike '%solde%insuffisant%'
+       or raison ilike '%insufficient%'
+       or raison ilike '%balance%')
+  and not (raison like 'Échec non détaillé%')
+```
+
+Les seize fichiers complets sont dans [`sondes/`](sondes/).
 
 ---
 
@@ -489,7 +435,7 @@ Rien à surveiller là.
 pas été payé », pas à « est-ce que ça va mal ». Une sonde rend un nombre ; cette
 question demande une liste. Elle reste du ressort du dashboard.
 
-**Le filtre par marchand** est absent des cinq sondes, volontairement : une
+**Le filtre par marchand** est absent des quinze sondes, volontairement : une
 alerte doit dire que quelque chose ne va pas, pas demander pour qui. Si un
 marchand doit être suivi à part, c'est une sonde de plus avec son
-`and m.name = '…'` — pas un paramètre.
+`and m.name = '…'` dans le socle — pas un paramètre.
