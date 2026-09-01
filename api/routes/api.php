@@ -22,7 +22,9 @@ use App\Modules\Github\Http\Controllers\GithubController;
 use App\Modules\Mail\Http\Controllers\MailController;
 use App\Modules\Messagerie\Http\Controllers\ConversationController;
 use App\Modules\Messagerie\Http\Controllers\MessageController;
+use App\Modules\Monitoring\Http\Controllers\DatabaseController;
 use App\Modules\Monitoring\Http\Controllers\IntegrityController;
+use App\Modules\Monitoring\Http\Controllers\ProbeController;
 use App\Modules\Monitoring\Http\Controllers\PushHealthController;
 use App\Modules\Monitoring\Http\Controllers\QueueHealthController;
 use App\Modules\Monitoring\Http\Controllers\SearchHealthController;
@@ -274,6 +276,38 @@ Route::middleware('supabase.auth')->group(function () {
     Route::get('projects/{project}/github/commits', [GithubController::class, 'commits']);
 
     // Admin — user management (admin role required)
+    /*
+     * La supervision des bases.
+     *
+     * Deux niveaux : consulter et acquitter d'un côté, brancher une base et
+     * définir ses sondes de l'autre. Voir qu'une base va mal et pouvoir en
+     * ajouter une avec ses identifiants ne demandent pas la même confiance.
+     *
+     * Le middleware rend 404 plutôt que 403 — voir `EnsureCapability`. Sans
+     * droit, ces routes n'existent pas.
+     */
+    Route::middleware('capability:monitoring')->prefix('monitoring')->group(function () {
+        Route::get('databases', [DatabaseController::class, 'index']);
+        Route::get('probes', [ProbeController::class, 'index']);
+        Route::get('alerts', [ProbeController::class, 'alerts']);
+
+        // Acquitter est ouvert à qui consulte : c'est le geste qui referme un
+        // incident, et le réserver aux administrateurs laisserait les alertes
+        // ouvertes en attendant qu'un seul d'entre eux passe.
+        Route::post('probes/{probe}/acknowledge', [ProbeController::class, 'acknowledge']);
+    });
+
+    Route::middleware('capability:monitoring.admin')->prefix('monitoring')->group(function () {
+        Route::post('databases', [DatabaseController::class, 'store']);
+        Route::post('databases/{database}/verify', [DatabaseController::class, 'verify']);
+        Route::delete('databases/{database}', [DatabaseController::class, 'destroy']);
+
+        Route::post('probes', [ProbeController::class, 'store']);
+        Route::post('probes/try', [ProbeController::class, 'tryOut']);
+        Route::patch('probes/{probe}', [ProbeController::class, 'update']);
+        Route::delete('probes/{probe}', [ProbeController::class, 'destroy']);
+    });
+
     Route::middleware('admin')->prefix('admin')->group(function () {
         Route::get('users', [AdminUserController::class, 'index']);
         Route::post('users', [AdminUserController::class, 'store']);
