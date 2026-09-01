@@ -77,6 +77,72 @@ class DatabaseController extends Controller
     }
 
     /**
+     * Modifie une base sans la débrancher.
+     *
+     * ## Pourquoi un `PATCH` et non « supprimer puis rebrancher »
+     *
+     * Retirer une base emporte ses sondes par cascade, et avec elles leur
+     * `counting_from` et leurs paliers déjà signalés. Renommer « Facturation »
+     * en « Facturation — production » ferait alors perdre l'historique de
+     * comptage et rouvrirait tous les incidents déjà traités. Un libellé ne
+     * peut pas coûter ça.
+     *
+     * ## Deux modifications de nature différente
+     *
+     * Le nom n'est qu'une étiquette : il change, on enregistre, c'est tout.
+     *
+     * Les champs de connexion, eux, changent **quelle** base est interrogée ou
+     * **avec quels droits**. Ils repassent donc par la même épreuve qu'à
+     * l'ajout : on tente d'écrire, et on refuse si l'écriture passe. Sans cela,
+     * une rotation de mot de passe pourrait remplacer en silence un compte de
+     * lecture par un compte d'écriture sur une base de production.
+     */
+    public function update(Request $request, MonitoredDatabase $database): JsonResponse
+    {
+        $data = $request->validate([
+            'name' => ['sometimes', 'string', 'max:80'],
+            'host' => ['sometimes', 'string', 'max:255'],
+            'port' => ['sometimes', 'integer', 'between:1,65535'],
+            'dbname' => ['sometimes', 'string', 'max:120'],
+            'username' => ['sometimes', 'string', 'max:120'],
+            'password' => ['sometimes', 'string', 'max:255'],
+        ]);
+
+        $connexion = array_intersect_key(
+            $data,
+            array_flip(['host', 'port', 'dbname', 'username', 'password']),
+        );
+
+        if ($connexion === []) {
+            $database->update(['name' => $data['name'] ?? $database->name]);
+
+            return response()->json($database->fresh());
+        }
+
+        // La vérification porte sur un exemplaire de travail, jamais sur la
+        // ligne enregistrée : un `update` suivi d'un refus laisserait en base
+        // des identifiants qu'on vient précisément de juger inacceptables.
+        $candidate = $database->replicate();
+        $candidate->fill($connexion);
+
+        $verdict = $this->connector->verifyReadOnly($candidate);
+        if (! $verdict['ok']) {
+            return response()->json([
+                'error' => 'Modification refusée',
+                'detail' => $verdict['error'],
+            ], 422);
+        }
+
+        $database->update([
+            ...$data,
+            'read_only_verified_at' => now(),
+            'last_error' => null,
+        ]);
+
+        return response()->json($database->fresh());
+    }
+
+    /**
      * Revérifie une base déjà enregistrée.
      *
      * Les droits d'un compte changent sans prévenir. Une base dont l'accès est

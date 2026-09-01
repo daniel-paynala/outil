@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use App\Modules\Monitoring\Models\MonitoredDatabase;
 use App\Modules\Monitoring\Models\MonitoringProbe;
 use App\Modules\Monitoring\Models\MonitoringProbeWindow;
+use App\Modules\Monitoring\Services\DatabaseConnector;
 use App\Modules\Monitoring\Support\Capability;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
@@ -237,5 +238,106 @@ class MonitoringApiTest extends TestCase
             'database_id' => $base->id,
             'query' => 'select 1 as valeur',
         ], $entetes)->assertStatus(422);
+    }
+
+    // ── Modifier une base sans la débrancher ────────────────────────────
+
+    public function test_renommer_ne_touche_pas_a_la_connexion(): void
+    {
+        // Un libellé est une étiquette. Le faire repasser par une tentative de
+        // connexion rendrait le renommage impossible quand la base est
+        // justement injoignable — c'est-à-dire au moment où on veut le plus
+        // écrire « (en panne) » à côté de son nom.
+        [$user, $entetes] = $this->authenticate();
+        $this->accorder($user->id, Capability::MonitoringAdmin);
+        $base = $this->base();
+
+        $this->mock(DatabaseConnector::class)
+            ->shouldNotReceive('verifyReadOnly');
+
+        $this->patchJson("/api/monitoring/databases/{$base->id}", [
+            'name' => 'Airtel Money — production',
+        ], $entetes)->assertOk()->assertJsonPath('name', 'Airtel Money — production');
+    }
+
+    public function test_renommer_preserve_les_sondes_et_leur_comptage(): void
+    {
+        // C'est la raison d'être de cette route. Supprimer puis rebrancher
+        // emporterait les sondes par cascade, et avec elles les paliers déjà
+        // signalés : renommer rouvrirait tous les incidents déjà traités.
+        [$user, $entetes] = $this->authenticate();
+        $this->accorder($user->id, Capability::MonitoringAdmin);
+        $base = $this->base();
+        $sonde = $this->sonde($base);
+
+        $this->patchJson("/api/monitoring/databases/{$base->id}", [
+            'name' => 'Autre nom',
+        ], $entetes)->assertOk();
+
+        $this->assertDatabaseHas('monitoring_probes', ['id' => $sonde->id]);
+        $this->assertSame(10, $sonde->windows()->first()->highest_tier);
+    }
+
+    public function test_changer_le_mot_de_passe_repasse_par_la_verification(): void
+    {
+        // Sans cela, une rotation remplacerait en silence un compte de lecture
+        // par un compte d'écriture sur une base de production.
+        [$user, $entetes] = $this->authenticate();
+        $this->accorder($user->id, Capability::MonitoringAdmin);
+        $base = $this->base();
+
+        $this->mock(DatabaseConnector::class)
+            ->shouldReceive('verifyReadOnly')
+            ->once()
+            ->andReturn(['ok' => true, 'error' => null]);
+
+        $this->patchJson("/api/monitoring/databases/{$base->id}", [
+            'password' => 'le-nouveau',
+        ], $entetes)->assertOk();
+
+        $this->assertSame('le-nouveau', $base->fresh()->password);
+    }
+
+    public function test_une_modification_refusee_ne_laisse_aucune_trace(): void
+    {
+        // Un `update` suivi d'un refus laisserait en base les identifiants
+        // qu'on vient précisément de juger inacceptables.
+        [$user, $entetes] = $this->authenticate();
+        $this->accorder($user->id, Capability::MonitoringAdmin);
+        $base = $this->base();
+
+        $this->mock(DatabaseConnector::class)
+            ->shouldReceive('verifyReadOnly')
+            ->once()
+            ->andReturn([
+                'ok' => false,
+                'error' => 'Ces identifiants permettent d\'écrire.',
+            ]);
+
+        $this->patchJson("/api/monitoring/databases/{$base->id}", [
+            'name' => 'Renommée au passage',
+            'username' => 'compte_admin',
+            'password' => 'trop-puissant',
+        ], $entetes)->assertStatus(422);
+
+        // Ni les identifiants, ni le nom envoyé dans la même requête : la
+        // modification est un tout, elle passe ou elle ne passe pas.
+        $apres = $base->fresh();
+        $this->assertSame('lecteur', $apres->username);
+        $this->assertSame('motdepasse-secret', $apres->password);
+        $this->assertSame('Airtel Money', $apres->name);
+    }
+
+    public function test_consulter_ne_permet_pas_de_renommer_une_base(): void
+    {
+        [$user, $entetes] = $this->authenticate();
+        $this->accorder($user->id, Capability::Monitoring);
+        $base = $this->base();
+
+        $this->patchJson("/api/monitoring/databases/{$base->id}", [
+            'name' => 'Renommée sans droit',
+        ], $entetes)->assertNotFound();
+
+        $this->assertSame('Airtel Money', $base->fresh()->name);
     }
 }

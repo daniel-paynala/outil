@@ -72,7 +72,10 @@ export default function MonitoringBoard({
   const [sondeOuverte, setSondeOuverte] = useState<Probe | "nouvelle" | null>(
     null,
   );
-  const [baseOuverte, setBaseOuverte] = useState(false);
+  // `"nouvelle"` pour brancher, une base pour la modifier, `null` fermé.
+  const [baseOuverte, setBaseOuverte] = useState<
+    MonitoredDatabase | "nouvelle" | null
+  >(null);
 
   /**
    * Ce qui attend un geste d'abord, du plus grave au moins grave.
@@ -138,7 +141,7 @@ export default function MonitoringBoard({
           {canAdmin && (
             <div className="flex gap-2">
               <button
-                onClick={() => setBaseOuverte(true)}
+                onClick={() => setBaseOuverte("nouvelle")}
                 className="inline-flex items-center gap-1.5 rounded-md border border-[var(--border)] px-3 py-1.5 text-sm hover:bg-[var(--surface)]"
               >
                 <DatabaseIcon size={14} />
@@ -203,7 +206,8 @@ export default function MonitoringBoard({
         <DatabaseList
           databases={databases}
           canAdmin={canAdmin}
-          onAdd={() => setBaseOuverte(true)}
+          onAdd={() => setBaseOuverte("nouvelle")}
+          onEdit={(base) => setBaseOuverte(base)}
         />
 
         <AlertHistory alerts={alerts} />
@@ -222,9 +226,10 @@ export default function MonitoringBoard({
 
         {baseOuverte && (
           <DatabaseDrawer
-            onClose={() => setBaseOuverte(false)}
+            database={baseOuverte === "nouvelle" ? null : baseOuverte}
+            onClose={() => setBaseOuverte(null)}
             onSaved={() => {
-              setBaseOuverte(false);
+              setBaseOuverte(null);
               startTransition(() => router.refresh());
             }}
           />
@@ -388,10 +393,12 @@ function DatabaseList({
   databases,
   canAdmin,
   onAdd,
+  onEdit,
 }: {
   databases: MonitoredDatabase[];
   canAdmin: boolean;
   onAdd: () => void;
+  onEdit: (base: MonitoredDatabase) => void;
 }) {
   const maintenant = useHorloge();
   const router = useRouter();
@@ -429,7 +436,9 @@ function DatabaseList({
   async function retirer(base: MonitoredDatabase) {
     if (
       !confirm(
-        `Retirer « ${base.name} » ? Ses ${base.probes_count ?? 0} sonde(s) disparaissent avec elle.`,
+        `Retirer « ${base.name} » ? Ses ${base.probes_count ?? 0} sonde(s) ` +
+          `disparaissent avec elle, ainsi que leur comptage. Pour seulement ` +
+          `la renommer ou changer ses identifiants, utilise le crayon.`,
       )
     ) {
       return;
@@ -524,6 +533,14 @@ function DatabaseList({
                       className={enCours === base.id ? "animate-spin" : ""}
                     />
                     Revérifier
+                  </button>
+                  <button
+                    onClick={() => onEdit(base)}
+                    aria-label={`Modifier ${base.name}`}
+                    title="Renommer, ou changer les identifiants"
+                    className="rounded-md border border-[var(--border)] p-1.5 text-[var(--muted)] hover:text-[var(--foreground)]"
+                  >
+                    <Pencil size={12} />
                   </button>
                   <button
                     onClick={() => retirer(base)}

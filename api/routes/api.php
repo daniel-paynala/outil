@@ -299,6 +299,7 @@ Route::middleware('supabase.auth')->group(function () {
 
     Route::middleware('capability:monitoring.admin')->prefix('monitoring')->group(function () {
         Route::post('databases', [DatabaseController::class, 'store']);
+        Route::patch('databases/{database}', [DatabaseController::class, 'update']);
         Route::post('databases/{database}/verify', [DatabaseController::class, 'verify']);
         Route::delete('databases/{database}', [DatabaseController::class, 'destroy']);
 

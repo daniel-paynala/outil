@@ -5,11 +5,12 @@ import { ShieldCheck } from "lucide-react";
 
 import { apiFetch } from "@/lib/api/client";
 import { useToast } from "@/core/toast/toast-context";
+import type { MonitoredDatabase } from "@/lib/monitoring/types";
 
 import Drawer from "./drawer";
 
 /**
- * Brancher une base.
+ * Brancher une base, ou en modifier une.
  *
  * ## Ce que le formulaire n'a pas à dire
  *
@@ -18,16 +19,27 @@ import Drawer from "./drawer";
  * de l'enregistrer si l'écriture passe. Le formulaire annonce donc ce qui va se
  * produire, plutôt que de demander une promesse.
  *
- * ## Le mot de passe
+ * ## Le mot de passe, à la modification
  *
- * Il part une fois et ne revient jamais — il n'est ni relu, ni pré-rempli à la
- * modification. C'est pourquoi il n'y a pas d'écran de modification d'une base :
- * on la retire et on la rebranche.
+ * Il part une fois et ne revient jamais : le champ est donc vide, et le laisser
+ * vide garde celui déjà enregistré. Le pré-remplir de faux points ferait croire
+ * qu'on peut le relire — et un champ qu'on croit relisible finit par être
+ * effacé pour « vérifier ce qu'il contient ».
+ *
+ * ## Pourquoi renommer ne rejoue pas la vérification
+ *
+ * Un libellé est une étiquette. Le faire dépendre d'une connexion réussie
+ * rendrait le renommage impossible quand la base est justement injoignable —
+ * c'est-à-dire au moment où on veut le plus écrire « (en panne) » à côté de son
+ * nom.
  */
 export default function DatabaseDrawer({
+  database,
   onClose,
   onSaved,
 }: {
+  /** La base à modifier, ou `null` pour en brancher une nouvelle. */
+  database?: MonitoredDatabase | null;
   onClose: () => void;
   onSaved: () => void;
 }) {
@@ -41,20 +53,30 @@ export default function DatabaseDrawer({
     setRefus(null);
 
     const champs = new FormData(e.currentTarget);
-    const corps = {
+    const motDePasse = String(champs.get("password") ?? "");
+    const corps: Record<string, unknown> = {
       name: String(champs.get("name") ?? "").trim(),
       host: String(champs.get("host") ?? "").trim(),
       port: Number(champs.get("port") ?? 5432),
       dbname: String(champs.get("dbname") ?? "").trim(),
       username: String(champs.get("username") ?? "").trim(),
-      password: String(champs.get("password") ?? ""),
     };
 
+    // Vide à la modification veut dire « garde celui d'avant ». L'envoyer
+    // quand même ferait rejouer la vérification pour rien, et échouerait sur
+    // une chaîne vide.
+    if (motDePasse !== "" || !database) corps.password = motDePasse;
+
     try {
-      const res = await apiFetch("/api/monitoring/databases", {
-        method: "POST",
-        body: JSON.stringify(corps),
-      });
+      const res = await apiFetch(
+        database
+          ? `/api/monitoring/databases/${database.id}`
+          : "/api/monitoring/databases",
+        {
+          method: database ? "PATCH" : "POST",
+          body: JSON.stringify(corps),
+        },
+      );
 
       if (!res.ok) {
         const erreur = await res.json().catch(() => ({}));
@@ -69,7 +91,10 @@ export default function DatabaseDrawer({
         return;
       }
 
-      toast.success("Base branchée", `${corps.name} · lecture seule constatée`);
+      toast.success(
+        database ? "Base modifiée" : "Base branchée",
+        `${corps.name}`,
+      );
       onSaved();
     } catch (e) {
       setRefus(e instanceof Error ? e.message : "Le serveur n'a pas répondu.");
@@ -78,8 +103,13 @@ export default function DatabaseDrawer({
     }
   }
 
+  const changeLaConnexion = database !== null && database !== undefined;
+
   return (
-    <Drawer title="Brancher une base" onClose={onClose}>
+    <Drawer
+      title={database ? `Modifier « ${database.name} »` : "Brancher une base"}
+      onClose={onClose}
+    >
       <form onSubmit={soumettre} className="flex min-h-0 flex-1 flex-col">
         <div className="flex-1 space-y-5 overflow-y-auto px-6 py-5">
           <p className="flex gap-2.5 rounded-md border border-[var(--border)] bg-[var(--surface)] px-3 py-2.5 text-xs text-[var(--muted)]">
@@ -88,13 +118,29 @@ export default function DatabaseDrawer({
               className="mt-px shrink-0 text-[var(--color-success)]"
             />
             <span>
-              Avant d&apos;enregistrer quoi que ce soit, Arche essaie{" "}
-              <strong className="font-medium text-[var(--foreground)]">
-                d&apos;écrire
-              </strong>{" "}
-              dans cette base. Si l&apos;écriture passe, les identifiants sont
-              trop puissants : la base est refusée et rien n&apos;est conservé,
-              mot de passe compris.
+              {changeLaConnexion ? (
+                <>
+                  Changer le nom seul n&apos;interroge pas la base. Toucher à
+                  l&apos;hôte, au port, à la base, à l&apos;utilisateur ou au
+                  mot de passe fait{" "}
+                  <strong className="font-medium text-[var(--foreground)]">
+                    rejouer la vérification
+                  </strong>{" "}
+                  : Arche essaie d&apos;écrire, et refuse la modification
+                  entière si l&apos;écriture passe. Les sondes, elles, ne
+                  bougent pas.
+                </>
+              ) : (
+                <>
+                  Avant d&apos;enregistrer quoi que ce soit, Arche essaie{" "}
+                  <strong className="font-medium text-[var(--foreground)]">
+                    d&apos;écrire
+                  </strong>{" "}
+                  dans cette base. Si l&apos;écriture passe, les identifiants
+                  sont trop puissants : la base est refusée et rien n&apos;est
+                  conservé, mot de passe compris.
+                </>
+              )}
             </span>
           </p>
 
@@ -104,6 +150,7 @@ export default function DatabaseDrawer({
               required
               maxLength={80}
               autoFocus
+              defaultValue={database?.name ?? ""}
               placeholder="Facturation — production"
               className={inputClass}
             />
@@ -116,6 +163,7 @@ export default function DatabaseDrawer({
                   name="host"
                   required
                   maxLength={255}
+                  defaultValue={database?.host ?? ""}
                   placeholder="db.exemple.ga"
                   className={`${inputClass} font-mono`}
                 />
@@ -128,7 +176,7 @@ export default function DatabaseDrawer({
                   type="number"
                   min={1}
                   max={65535}
-                  defaultValue={5432}
+                  defaultValue={database?.port ?? 5432}
                   className={`${inputClass} font-mono tabular-nums`}
                 />
               </Field>
@@ -140,6 +188,7 @@ export default function DatabaseDrawer({
               name="dbname"
               required
               maxLength={120}
+              defaultValue={database?.dbname ?? ""}
               placeholder="facturation"
               className={`${inputClass} font-mono`}
             />
@@ -153,6 +202,7 @@ export default function DatabaseDrawer({
                   required
                   maxLength={120}
                   autoComplete="off"
+                  defaultValue={database?.username ?? ""}
                   placeholder="arche_lecture"
                   className={`${inputClass} font-mono`}
                 />
@@ -192,7 +242,11 @@ export default function DatabaseDrawer({
             disabled={envoi}
             className="rounded-md bg-[var(--color-brand-red)] px-3.5 py-1.5 text-sm font-medium text-white hover:bg-[var(--color-brand-red-600)] disabled:opacity-50"
           >
-            {envoi ? "Vérification…" : "Vérifier et brancher"}
+            {envoi
+              ? "Vérification…"
+              : database
+                ? "Enregistrer"
+                : "Vérifier et brancher"}
           </button>
         </footer>
       </form>
