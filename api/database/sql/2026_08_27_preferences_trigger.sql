@@ -47,6 +47,11 @@ begin
         --
         -- Explicite plutôt que laissée au repli des types inconnus : le
         -- comportement est le même, la différence est qu'il est décidé.
+        -- Une alerte de supervision passe toujours. Elle signale qu'une base
+        -- de production va mal, à quelqu'un dont c'est précisément le rôle. La
+        -- taire parce qu'une case de préférence est décochée reviendrait à
+        -- désarmer le seul dispositif qui prévienne.
+        when new.type = 'monitoring.alert'     then null
         when new.type = 'card.mentioned'       then null
         when new.type like 'message.%'         then 'notify_messages'
         when new.type like 'task.assigned'     then 'notify_task_assignment'

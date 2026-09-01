@@ -1,5 +1,6 @@
 <?php
 
+use App\Models\User;
 use App\Modules\Activity\Http\Controllers\ActivityController;
 use App\Modules\Activity\Http\Controllers\AdminAuditController;
 use App\Modules\Adr\Http\Controllers\DecisionController;
@@ -89,7 +90,6 @@ Route::post('/invite/{token}/activate', [InvitationController::class, 'activate'
 // Public — password reset (réutilise les invitation_tokens et la page /invite)
 Route::post('/auth/forgot-password', [PasswordResetController::class, 'request']);
 
-
 Route::middleware('supabase.auth')->group(function () {
     // Appels internes. Le serveur ne fait que sonner : la voix va d'un
     // téléphone à l'autre en direct, la signalisation passe par Supabase.
@@ -107,7 +107,7 @@ Route::middleware('supabase.auth')->group(function () {
     Route::delete('mail/connect', [MailController::class, 'disconnect']);
 
     Route::get('/me', function (Request $request) {
-        /** @var \App\Models\User|null $user */
+        /** @var User|null $user */
         $user = $request->attributes->get('user');
 
         return response()->json([
@@ -126,7 +126,7 @@ Route::middleware('supabase.auth')->group(function () {
     Route::delete('/me/avatar', [AvatarController::class, 'destroy']);
 
     Route::patch('/me/settings', function (Request $request) {
-        /** @var \App\Models\User $user */
+        /** @var User $user */
         $user = $request->attributes->get('user');
         if (! $user) {
             abort(401);

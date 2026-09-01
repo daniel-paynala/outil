@@ -1,6 +1,7 @@
 <?php
 
 use App\Modules\Mail\Jobs\PollGmailInboxes;
+use App\Modules\Monitoring\Services\ProbeRunner;
 use Illuminate\Foundation\Inspiring;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Schedule;
@@ -44,3 +45,22 @@ Schedule::job(new PollGmailInboxes)
 Schedule::command('documents:flush-notifications')
     ->everyMinute()
     ->withoutOverlapping(5);
+
+/*
+ * La supervision des bases.
+ *
+ * Toutes les minutes : c'est la cadence qui donne son sens au projet — être
+ * averti pendant que ça arrive, pas le lendemain matin. Chaque sonde a son
+ * plafond de huit secondes côté Postgres, donc une base lente ne décale pas les
+ * autres.
+ *
+ * `withoutOverlapping` compte : une base injoignable fait attendre ses sondes
+ * jusqu'au délai d'expiration, et sans cette garde une seconde exécution
+ * partirait par-dessus la première.
+ */
+Schedule::call(fn () => app(ProbeRunner::class)->runAll())
+    ->name('monitoring.probes')
+    // Le nom doit précéder la garde : c'est lui qui sert de clé de verrou, et
+    // sans lui Laravel ne sait pas ce qu'il empêche de recouvrir.
+    ->withoutOverlapping()
+    ->everyMinute();
