@@ -1,4 +1,5 @@
+-- Niveau paiement, pas réconciliation. La sonde la moins chère.
 select count(*) as valeur
-from payment p
-where p.created_at >= :depuis
-  and p.status = 'FAILED'
+from payment
+where created_at >= :depuis
+  and status = 'FAILED'

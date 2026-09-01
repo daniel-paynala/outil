@@ -1,6 +1,6 @@
--- CP a répondu non. Une seule table, aucune jointure.
+-- MC a répondu non — tous les marchands sauf Rengus Digital.
 select count(*) as valeur
 from airtel_logs
 where created_at >= :depuis
-  and request_id like '%CP'
+  and request_id like '%MC'
   and response->'status'->>'success' is distinct from 'true'
