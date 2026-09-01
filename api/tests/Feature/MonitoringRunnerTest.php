@@ -70,12 +70,17 @@ class MonitoringRunnerTest extends TestCase
                 string $sql,
                 array $bindings = [],
             ): int {
+                $this->test->dernierDepuis = $bindings['depuis'] ?? null;
+
                 return $this->test->prochaineValeur();
             }
         };
 
         $this->app->instance(DatabaseConnector::class, $faux);
     }
+
+    /** Le `:depuis` envoyé à la dernière exécution — voir les tests de fenêtre. */
+    public ?string $dernierDepuis = null;
 
     public function prochaineValeur(): int
     {
@@ -231,5 +236,122 @@ class MonitoringRunnerTest extends TestCase
         $this->tourner(50);
 
         $this->assertSame([], $this->alertes());
+    }
+
+    // ── De quand à quand compte-t-on ? ──────────────────────────────────
+
+    public function test_une_fenetre_glissante_part_de_n_heures_avant_maintenant(): void
+    {
+        $this->travelTo('2026-09-01 15:13:00');
+
+        $this->tourner(1);
+
+        $this->assertSame('2026-08-31 15:13:00', $this->dernierDepuis);
+    }
+
+    public function test_une_fenetre_calendaire_part_de_minuit_a_libreville(): void
+    {
+        // Minuit à Libreville, pas minuit UTC. Le Gabon est à UTC+1 : minuit
+        // local vaut 23 h la veille en temps universel, et c'est cette
+        // valeur-là qui doit partir dans la requête.
+        config(['monitoring.timezone' => 'Africa/Libreville']);
+        $this->fenetre->update(['mode' => 'calendaire']);
+        $this->travelTo('2026-09-01 15:13:00');
+
+        $this->tourner(1);
+
+        $this->assertSame('2026-08-31 23:00:00', $this->dernierDepuis);
+    }
+
+    public function test_minuit_utc_couperait_la_nuit_gabonaise_en_deux(): void
+    {
+        // À 00h30 UTC, il est 1h30 à Libreville : la nuit est en cours. Une
+        // fenêtre calendaire réglée sur UTC viendrait de repartir à zéro au
+        // milieu de la période la plus creuse, coupant en deux les incidents
+        // nocturnes qu'on veut justement voir d'un bloc.
+        config(['monitoring.timezone' => 'Africa/Libreville']);
+        $this->fenetre->update(['mode' => 'calendaire']);
+        $this->travelTo('2026-09-01 00:30:00');
+
+        $this->tourner(1);
+
+        // Minuit local, c'est-à-dire 23 h la veille en UTC — la journée
+        // gabonaise a commencé il y a une heure et demie, pas trente minutes.
+        $this->assertSame('2026-08-31 23:00:00', $this->dernierDepuis);
+    }
+
+    public function test_une_fenetre_calendaire_de_48h_remonte_a_avant_hier(): void
+    {
+        config(['monitoring.timezone' => 'Africa/Libreville']);
+        $this->fenetre->update(['hours' => 48, 'mode' => 'calendaire']);
+        $this->travelTo('2026-09-01 15:13:00');
+
+        $this->tourner(1);
+
+        // Deux journées entières : hier et aujourd'hui.
+        $this->assertSame('2026-08-30 23:00:00', $this->dernierDepuis);
+    }
+
+    public function test_l_acquittement_l_emporte_sur_le_debut_de_journee(): void
+    {
+        // Acquitter à 10 h doit faire repartir le comptage de 10 h, pas de
+        // minuit : sinon les événements qu'on vient de déclarer traités
+        // seraient recomptés jusqu'au lendemain.
+        config(['monitoring.timezone' => 'Africa/Libreville']);
+        $this->fenetre->update(['mode' => 'calendaire']);
+        $this->sonde->update(['counting_from' => '2026-09-01 10:00:00']);
+        $this->travelTo('2026-09-01 15:13:00');
+
+        $this->tourner(1);
+
+        $this->assertSame('2026-09-01 10:00:00', $this->dernierDepuis);
+    }
+
+    public function test_une_rafale_a_cheval_sur_minuit_echappe_au_calendaire(): void
+    {
+        // Le compromis, écrit noir sur blanc. Quatre incidents entre 22 h et
+        // 1 h : la fenêtre glissante en voit quatre et signale, la calendaire
+        // n'en voit que deux et se tait. Aucune des deux n'a tort — c'est
+        // pourquoi le mode est un choix par fenêtre et non un arbitrage imposé.
+        config(['monitoring.timezone' => 'UTC']);
+        $this->travelTo('2026-09-01 08:00:00');
+
+        $this->fenetre->update(['mode' => 'glissante']);
+        $this->tourner(4);
+        $this->assertSame(3, $this->fenetre->highest_tier);
+
+        $this->fenetre->update(['mode' => 'calendaire', 'highest_tier' => 0]);
+        $this->tourner(2);
+        $this->assertSame(0, $this->fenetre->fresh()->highest_tier);
+    }
+
+    public function test_une_fenetre_calendaire_de_six_heures_est_refusee(): void
+    {
+        // « Six heures depuis minuit » changerait de longueur au fil de la
+        // journée : le chiffre rendu ne voudrait rien dire, et personne ne le
+        // verrait.
+        [$user, $entetes] = $this->authenticate();
+        DB::table('user_capabilities')->insert([
+            'user_id' => $user->id,
+            'capability' => Capability::MonitoringAdmin->value,
+            'granted_at' => now(),
+        ]);
+
+        $this->postJson('/api/monitoring/probes', [
+            'database_id' => $this->sonde->database_id,
+            'title' => 'Six heures',
+            'query' => 'select count(*) as valeur from t where d >= :depuis',
+            'windows' => [['hours' => 6, 'mode' => 'calendaire', 'tiers' => [3]]],
+        ], $entetes)
+            ->assertStatus(422)
+            ->assertJsonValidationErrors('windows.0.hours');
+    }
+
+    public function test_le_defaut_reste_glissant(): void
+    {
+        // Les fenêtres déjà enregistrées ne doivent pas changer de sens sous
+        // les pieds de qui a réglé leurs paliers.
+        $this->assertSame('glissante', $this->fenetre->mode);
+        $this->assertFalse($this->fenetre->isCalendar());
     }
 }

@@ -59,6 +59,11 @@ return new class extends Migration
             $table->uuid('id')->primary();
             $table->uuid('probe_id');
             $table->integer('hours');
+
+            // 'glissante' — les N dernières heures, à tout instant.
+            // 'calendaire' — depuis minuit, heure de Libreville.
+            $table->string('mode', 16)->default('glissante');
+
             $table->json('tiers');
             $table->integer('highest_tier')->default(0);
             $table->integer('last_value')->nullable();

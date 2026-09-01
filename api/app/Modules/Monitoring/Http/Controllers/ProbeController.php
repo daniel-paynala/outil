@@ -12,6 +12,7 @@ use App\Modules\Monitoring\Services\DatabaseConnector;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Str;
+use Illuminate\Validation\ValidationException;
 use Throwable;
 
 /**
@@ -219,7 +220,7 @@ class ProbeController extends Controller
     /** @return array<string, mixed> */
     private function valider(Request $request): array
     {
-        return $request->validate([
+        $regles = [
             'database_id' => ['required', 'uuid', 'exists:monitored_databases,id'],
             'title' => ['required', 'string', 'max:120'],
             'unit' => ['sometimes', 'string', 'max:40'],
@@ -229,12 +230,30 @@ class ProbeController extends Controller
             // jamais et resterait à l'écran comme si elle veillait.
             'windows' => ['required', 'array', 'min:1', 'max:4'],
             'windows.*.hours' => ['required', 'integer', 'between:1,720'],
+            'windows.*.mode' => ['sometimes', 'in:glissante,calendaire'],
             'windows.*.tiers' => ['present', 'array', 'max:12'],
             'windows.*.tiers.*' => ['integer', 'min:1'],
-        ]);
+        ];
+
+        $donnees = $request->validate($regles);
+
+        // Une fenêtre calendaire ne se découpe qu'en journées entières. « Six
+        // heures depuis minuit » changerait de longueur au fil de la journée :
+        // le chiffre rendu ne voudrait rien dire, et personne ne le verrait.
+        foreach ($donnees['windows'] as $i => $fenetre) {
+            if (($fenetre['mode'] ?? 'glissante') === 'calendaire'
+                && $fenetre['hours'] % 24 !== 0) {
+                throw ValidationException::withMessages([
+                    "windows.{$i}.hours" => 'Une fenêtre calendaire doit couvrir '
+                        .'un nombre entier de journées : 24, 48, 72…',
+                ]);
+            }
+        }
+
+        return $donnees;
     }
 
-    /** @param  array<int, array{hours: int, tiers: array<int, int>}>  $fenetres */
+    /** @param  array<int, array{hours: int, mode?: string, tiers: array<int, int>}>  $fenetres */
     private function remplacerFenetres(MonitoringProbe $sonde, array $fenetres): void
     {
         $sonde->windows()->delete();
@@ -247,6 +266,7 @@ class ProbeController extends Controller
                 'id' => (string) Str::uuid(),
                 'probe_id' => $sonde->id,
                 'hours' => $fenetre['hours'],
+                'mode' => $fenetre['mode'] ?? 'glissante',
                 'tiers' => $paliers,
             ]);
         }

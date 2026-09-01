@@ -97,7 +97,7 @@ class ProbeRunner
     /**
      * Depuis quand compter.
      *
-     * Le plus récent des deux : le début de la fenêtre glissante, et le dernier
+     * Le plus récent des deux : le début de la fenêtre, et le dernier
      * acquittement. Sans le second, acquitter ne servirait à rien tant que les
      * événements traités restent dans la fenêtre.
      */
@@ -105,12 +105,49 @@ class ProbeRunner
         MonitoringProbe $sonde,
         MonitoringProbeWindow $fenetre,
     ): Carbon {
-        $debutFenetre = now()->subHours($fenetre->hours);
+        $debutFenetre = $this->windowStart($fenetre);
         $acquittement = $sonde->counting_from;
 
         return $acquittement !== null && $acquittement->greaterThan($debutFenetre)
             ? $acquittement
             : $debutFenetre;
+    }
+
+    /**
+     * Le début de la fenêtre, selon qu'elle glisse ou suit les journées.
+     *
+     * ## Les deux ne se valent pas, et aucune ne gagne toujours
+     *
+     * **Glissante** : les N dernières heures, à tout instant. Elle attrape une
+     * rafale à cheval sur minuit — deux incidents à 23 h et deux à 1 h font
+     * quatre — là où le découpage par journée n'en voit que deux d'un côté et
+     * deux de l'autre, et ne signale rien.
+     *
+     * **Calendaire** : depuis minuit. Elle dit ce que tout le monde entend par
+     * « trois time-outs dans la journée », se recoupe avec les rapports, et
+     * repart à zéro chaque nuit sans qu'on ait à acquitter quoi que ce soit.
+     *
+     * La première est meilleure pour détecter, la seconde pour décider. D'où
+     * le choix par fenêtre plutôt qu'un arbitrage imposé — et le défaut reste
+     * la glissante, qui ne laisse passer aucune rafale.
+     *
+     * Minuit est celui de Libreville, pas d'UTC : minuit UTC tombe à 1 h du
+     * matin au Gabon, en pleine nuit locale, et couperait en deux les
+     * incidents nocturnes qu'on veut justement voir d'un bloc.
+     */
+    private function windowStart(MonitoringProbeWindow $fenetre): Carbon
+    {
+        if (! $fenetre->isCalendar()) {
+            return now()->subHours($fenetre->hours);
+        }
+
+        $jours = intdiv($fenetre->hours, 24);
+
+        return now()
+            ->timezone(config('monitoring.timezone'))
+            ->startOfDay()
+            ->subDays(max($jours - 1, 0))
+            ->utc();
     }
 
     /**

@@ -30,9 +30,26 @@ export type MonitoredDatabase = {
 };
 
 /** Une durée d'observation, ses paliers, et l'état du signalement. */
+/**
+ * Comment la fenêtre découpe le temps.
+ *
+ * `glissante` — les N dernières heures, à tout instant. Elle attrape une rafale
+ * à cheval sur minuit : deux incidents à 23 h et deux à 1 h font quatre.
+ *
+ * `calendaire` — depuis minuit, heure de Libreville. Elle dit ce que tout le
+ * monde entend par « trois time-outs dans la journée », se recoupe avec les
+ * rapports, et repart à zéro chaque nuit sans acquittement — mais coupe en deux
+ * les rafales nocturnes.
+ *
+ * La première détecte mieux, la seconde se décide mieux. D'où un choix par
+ * fenêtre plutôt qu'un arbitrage imposé.
+ */
+export type WindowMode = "glissante" | "calendaire";
+
 export type ProbeWindow = {
   id?: string;
   hours: number;
+  mode?: WindowMode;
 
   /** Croissants. Vide = on observe sans alerter. */
   tiers: number[];

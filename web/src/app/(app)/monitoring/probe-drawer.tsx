@@ -6,13 +6,18 @@ import { Play, Plus, Trash2 } from "lucide-react";
 
 import { apiFetch } from "@/lib/api/client";
 import { useToast } from "@/core/toast/toast-context";
-import type { MonitoredDatabase, Probe } from "@/lib/monitoring/types";
+import type {
+  MonitoredDatabase,
+  Probe,
+  WindowMode,
+} from "@/lib/monitoring/types";
 
 import Drawer from "./drawer";
 
 /** Une fenêtre en cours de saisie — les paliers restent du texte tant qu'on tape. */
 type WindowDraft = {
   hours: number;
+  mode: WindowMode;
 
   /**
    * Saisi tel quel : « 3, 10, 20 ».
@@ -25,8 +30,8 @@ type WindowDraft = {
 };
 
 const FENETRES_PAR_DEFAUT: WindowDraft[] = [
-  { hours: 24, tiers: "3, 10, 20, 40, 60, 100" },
-  { hours: 48, tiers: "10, 40, 100" },
+  { hours: 24, mode: "glissante", tiers: "3, 10, 20, 40, 60, 100" },
+  { hours: 48, mode: "glissante", tiers: "10, 40, 100" },
 ];
 
 const EXEMPLE = `select count(*) as valeur
@@ -77,6 +82,7 @@ export default function ProbeDrawer({
     probe?.windows.length
       ? probe.windows.map((f) => ({
           hours: f.hours,
+          mode: f.mode ?? "glissante",
           tiers: f.tiers.join(", "),
         }))
       : FENETRES_PAR_DEFAUT,
@@ -151,6 +157,7 @@ export default function ProbeDrawer({
             query: requete,
             windows: fenetres.map((f) => ({
               hours: f.hours,
+              mode: f.mode,
               tiers: paliers(f.tiers),
             })),
           }),
@@ -327,7 +334,10 @@ export default function ProbeDrawer({
                 <button
                   type="button"
                   onClick={() =>
-                    setFenetres((f) => [...f, { hours: 24, tiers: "" }])
+                    setFenetres((f) => [
+                      ...f,
+                      { hours: 24, mode: "glissante", tiers: "" },
+                    ])
                   }
                   className="inline-flex items-center gap-1 text-xs text-[var(--color-brand-red)] hover:underline"
                 >
@@ -349,11 +359,22 @@ export default function ProbeDrawer({
                         value={fenetre.hours}
                         onChange={(e) =>
                           setFenetres((f) =>
-                            f.map((w, j) =>
-                              j === i
-                                ? { ...w, hours: Number(e.target.value) }
-                                : w,
-                            ),
+                            f.map((w, j) => {
+                              if (j !== i) return w;
+                              const hours = Number(e.target.value);
+
+                              // Une fenêtre calendaire ne se découpe qu'en
+                              // journées entières : « six heures depuis
+                              // minuit » changerait de longueur au fil de la
+                              // journée. On retombe en glissante plutôt que
+                              // de laisser le serveur refuser à
+                              // l'enregistrement.
+                              return {
+                                ...w,
+                                hours,
+                                mode: hours % 24 === 0 ? w.mode : "glissante",
+                              };
+                            }),
                           )
                         }
                         className={`${inputClass} tabular-nums`}
@@ -361,6 +382,33 @@ export default function ProbeDrawer({
                       <span className="text-xs text-[var(--muted)]">h</span>
                     </div>
                   </div>
+
+                  <select
+                    value={fenetre.mode}
+                    onChange={(e) =>
+                      setFenetres((f) =>
+                        f.map((w, j) =>
+                          j === i
+                            ? { ...w, mode: e.target.value as WindowMode }
+                            : w,
+                        ),
+                      )
+                    }
+                    title={
+                      fenetre.mode === "glissante"
+                        ? "Les dernières heures, à tout instant"
+                        : "Depuis minuit, heure de Libreville"
+                    }
+                    className={`${inputClass} w-32 shrink-0`}
+                  >
+                    <option value="glissante">glissantes</option>
+                    <option
+                      value="calendaire"
+                      disabled={fenetre.hours % 24 !== 0}
+                    >
+                      calendaires
+                    </option>
+                  </select>
 
                   <div className="min-w-0 flex-1">
                     <input

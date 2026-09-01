@@ -400,9 +400,17 @@ function WindowCell({
 
   return (
     <div className="bg-[var(--background)] px-4 py-3">
-      <p className="flex items-center gap-2 text-[11px] uppercase tracking-wider text-[var(--muted)]">
+      <p
+        className="flex items-center gap-2 text-[11px] uppercase tracking-wider text-[var(--muted)]"
+        title={
+          fenetre.mode === "calendaire"
+            ? "Depuis minuit, heure de Libreville"
+            : "Les dernières heures, à tout instant"
+        }
+      >
         <Pastille level={niveau} />
-        {fenetre.hours} h glissantes
+        {fenetre.hours} h{" "}
+        {fenetre.mode === "calendaire" ? "calendaires" : "glissantes"}
       </p>
       <p className="mt-1 flex items-baseline gap-1.5">
         <span
