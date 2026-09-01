@@ -107,10 +107,18 @@ Route::middleware('supabase.auth')->group(function () {
     Route::delete('mail/connect', [MailController::class, 'disconnect']);
 
     Route::get('/me', function (Request $request) {
+        /** @var \App\Models\User|null $user */
+        $user = $request->attributes->get('user');
+
         return response()->json([
             'id' => $request->attributes->get('supabase_user_id'),
-            'user' => $request->attributes->get('user'),
+            'user' => $user,
             'claims' => $request->attributes->get('supabase_user'),
+            // Les droits accordés, pour que l'app sache ce qu'elle a le droit
+            // d'afficher. Sans eux, un menu masqué côté serveur resterait
+            // visible et n'échouerait qu'au tap — une porte qu'on voit et qui
+            // ne s'ouvre pas est pire qu'une porte absente.
+            'capabilities' => $user?->capabilities() ?? [],
         ]);
     });
 

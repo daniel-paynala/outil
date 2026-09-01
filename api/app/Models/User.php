@@ -7,11 +7,13 @@ use App\Modules\Core\Models\Project;
 use App\Modules\Core\Models\ProjectMember;
 use App\Modules\Core\Services\SupabaseUserSync;
 use App\Modules\Files\Services\SupabaseStorage;
+use App\Modules\Monitoring\Support\Capability;
 use Illuminate\Database\Eloquent\Casts\Attribute;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Support\Facades\DB;
 
 class User extends Model
 {
@@ -98,6 +100,51 @@ class User extends Model
     public function memberships(): HasMany
     {
         return $this->hasMany(ProjectMember::class);
+    }
+
+    /**
+     * Les droits accordés à cette personne, droits impliqués compris.
+     *
+     * ## Pourquoi un administrateur les a tous
+     *
+     * Sans cette règle, accorder un droit exigerait déjà de l'avoir — et
+     * personne ne pourrait accorder le premier. L'administrateur est la racine
+     * de la chaîne, comme il l'est déjà pour le reste d'Arche.
+     *
+     * @return array<int, string>
+     */
+    public function capabilities(): array
+    {
+        if ($this->isAdmin()) {
+            return array_map(fn (Capability $c) => $c->value, Capability::cases());
+        }
+
+        $accordes = $this->relationLoaded('grantedCapabilities')
+            ? $this->grantedCapabilities->pluck('capability')->all()
+            : DB::table('user_capabilities')
+                ->where('user_id', $this->id)
+                ->pluck('capability')
+                ->all();
+
+        $effectifs = [];
+        foreach ($accordes as $valeur) {
+            $droit = Capability::tryFrom($valeur);
+            if ($droit === null) {
+                continue;
+            }
+
+            $effectifs[] = $droit->value;
+            foreach ($droit->implies() as $implique) {
+                $effectifs[] = $implique->value;
+            }
+        }
+
+        return array_values(array_unique($effectifs));
+    }
+
+    public function can(Capability $capability): bool
+    {
+        return in_array($capability->value, $this->capabilities(), true);
     }
 
     public function isAdmin(): bool
