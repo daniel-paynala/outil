@@ -93,6 +93,65 @@ export type MonitoringAlert = {
 };
 
 /**
+ * Où en est une sonde, en trois états qui se lisent d'un coup d'œil.
+ *
+ * Trois et non deux : « ça va » et « ça ne va pas » obligeraient à lire les
+ * chiffres pour savoir s'il faut se lever maintenant ou après le café. Le
+ * premier palier franchi est un avertissement — c'est le seuil qu'on a placé
+ * justement pour voir venir. Au-delà, la chose s'aggrave, et la couleur doit le
+ * dire sans qu'on ait à comparer deux nombres.
+ */
+export type Level = "calme" | "premier" | "aggrave";
+
+/** Du moins grave au plus grave — sert à prendre le pire de deux états. */
+const ORDRE: Level[] = ["calme", "premier", "aggrave"];
+
+export function pire(a: Level, b: Level): Level {
+  return ORDRE.indexOf(a) >= ORDRE.indexOf(b) ? a : b;
+}
+
+/**
+ * L'état d'une fenêtre.
+ *
+ * Comparé au **premier palier de cette fenêtre**, jamais à une valeur en dur :
+ * une sonde de time-outs commence à 1, une sonde de soldes insuffisants à 20.
+ * « Le premier palier » est la seule formulation qui vaille pour les deux.
+ */
+export function windowLevel(w: ProbeWindow): Level {
+  if (w.highest_tier <= 0) return "calme";
+  if (w.tiers.length === 0) return "aggrave";
+
+  return w.highest_tier === w.tiers[0] ? "premier" : "aggrave";
+}
+
+/**
+ * L'état d'une sonde : celui de sa fenêtre la plus alarmante.
+ *
+ * Le pire l'emporte. Une sonde calme sur 48 h mais aggravée sur 24 h est une
+ * sonde aggravée : c'est la fenêtre courte qui décrit ce qui se passe
+ * maintenant, et une pastille verte lui donnerait tort.
+ */
+export function probeLevel(p: Probe): Level {
+  return p.windows.reduce<Level>(
+    (max, w) => pire(max, windowLevel(w)),
+    "calme",
+  );
+}
+
+/** La couleur de chaque état, prise dans les jetons du thème. */
+export const COULEUR_NIVEAU: Record<Level, string> = {
+  calme: "var(--color-success)",
+  premier: "var(--color-warning)",
+  aggrave: "var(--color-danger)",
+};
+
+export const LIBELLE_NIVEAU: Record<Level, string> = {
+  calme: "Sous le premier palier",
+  premier: "Premier palier franchi",
+  aggrave: "Au-delà du premier palier",
+};
+
+/**
  * Un incident est ouvert dès qu'une fenêtre porte un palier franchi.
  *
  * Volontairement pas déduit de la valeur courante : celle-ci peut redescendre

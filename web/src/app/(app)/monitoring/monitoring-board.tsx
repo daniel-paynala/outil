@@ -24,6 +24,11 @@ import { useToast } from "@/core/toast/toast-context";
 import { useMonitoringClock } from "@/lib/monitoring/clock";
 import {
   ago as depuis,
+  COULEUR_NIVEAU,
+  LIBELLE_NIVEAU,
+  probeLevel,
+  windowLevel,
+  type Level,
   hasIncident,
   nextTier,
   severity,
@@ -48,6 +53,32 @@ const Horloge = createContext(0);
 /** L'heure courante de l'écran, à passer à `depuis`. */
 function useHorloge(): number {
   return useContext(Horloge);
+}
+
+/**
+ * La pastille d'état : verte, orange ou rouge.
+ *
+ * Un disque plein et rien d'autre. Une icône par état demanderait de
+ * reconnaître trois dessins ; la couleur seule se lit sans être regardée, et
+ * c'est ce qu'on attend d'un tableau qu'on balaie du regard.
+ *
+ * Le `title` porte le sens en toutes lettres : la couleur seule exclurait les
+ * daltoniens, qui sont une personne sur douze.
+ */
+function Pastille({ level, size = 9 }: { level: Level; size?: number }) {
+  return (
+    <span
+      role="img"
+      aria-label={LIBELLE_NIVEAU[level]}
+      title={LIBELLE_NIVEAU[level]}
+      style={{
+        background: COULEUR_NIVEAU[level],
+        height: size,
+        width: size,
+      }}
+      className="inline-block shrink-0 rounded-full ring-1 ring-[var(--background)]"
+    />
+  );
 }
 
 export default function MonitoringBoard({
@@ -261,19 +292,27 @@ function ProbeCard({
 }) {
   const maintenant = useHorloge();
   const ouvert = hasIncident(probe);
+  const niveau = probeLevel(probe);
   const baseInerte = probe.database?.read_only_verified_at == null;
 
   return (
     <article
+      style={
+        niveau === "calme"
+          ? undefined
+          : {
+              borderColor: `color-mix(in srgb, ${COULEUR_NIVEAU[niveau]} 40%, transparent)`,
+              borderLeftColor: COULEUR_NIVEAU[niveau],
+            }
+      }
       className={`rounded-lg border bg-[var(--background)] ${
-        ouvert
-          ? "border-[var(--color-danger)]/40 border-l-[3px] border-l-[var(--color-danger)]"
-          : "border-[var(--border)]"
+        niveau === "calme" ? "border-[var(--border)]" : "border-l-[3px]"
       }`}
     >
       <div className="flex flex-wrap items-start gap-3 px-4 py-3">
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2">
+            <Pastille level={niveau} size={10} />
             <h3 className="truncate text-sm font-medium">{probe.title}</h3>
             {!probe.enabled && (
               <span className="rounded bg-[var(--surface)] px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-[var(--muted)]">
@@ -357,17 +396,18 @@ function WindowCell({
   const valeur = fenetre.last_value;
   const suivant = nextTier(fenetre);
   const franchi = fenetre.highest_tier > 0;
+  const niveau = windowLevel(fenetre);
 
   return (
     <div className="bg-[var(--background)] px-4 py-3">
-      <p className="text-[11px] uppercase tracking-wider text-[var(--muted)]">
+      <p className="flex items-center gap-2 text-[11px] uppercase tracking-wider text-[var(--muted)]">
+        <Pastille level={niveau} />
         {fenetre.hours} h glissantes
       </p>
       <p className="mt-1 flex items-baseline gap-1.5">
         <span
-          className={`text-xl font-semibold tabular-nums ${
-            franchi ? "text-[var(--color-danger)]" : ""
-          }`}
+          style={franchi ? { color: COULEUR_NIVEAU[niveau] } : undefined}
+          className="text-xl font-semibold tabular-nums"
         >
           {valeur ?? "—"}
         </span>
