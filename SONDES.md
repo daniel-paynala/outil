@@ -1,11 +1,11 @@
 # Les erreurs de Paynala — une requête indépendante par type
 
-Dix-huit fichiers dans [`sondes/`](sondes/). **Chacun est autonome** : une
+Dix-neuf fichiers dans [`sondes/`](sondes/). **Chacun est autonome** : une
 requête complète, sans vue à créer, sans socle partagé, sans dépendance aux
 autres. Tu en colles une dans le champ « Requête » d'une sonde Arche, elle
 marche seule.
 
-Quatorze d'entre elles interrogent **une seule table**. La plus longue fait
+Quinze d'entre elles interrogent **une seule table**. La plus longue fait
 quatorze lignes.
 
 ---
@@ -121,7 +121,61 @@ where created_at >= :depuis
 |---|---|---|
 | 14 | `14-paiements-en-echec.sql` | Paiements en statut `FAILED` |
 | 15 | `15-silence-production.sql` | Minutes depuis le dernier paiement |
+| 17 | `17-paiements-reussis.sql` | Paiements en statut `SUCCESS` |
 | 16 | `16-decouverte-des-libelles.sql` | *Pas une sonde* — voir plus bas |
+
+### La sonde 17 ne mesure pas une panne, et ça change tout
+
+```sql
+select count(*) as valeur
+from payment
+where created_at >= :depuis
+  and status = 'SUCCESS'
+```
+
+*Unité : `paiements réussis` · 24 h : `100`*
+
+C'est la seule sonde qui compte une bonne nouvelle. Le mécanisme des paliers,
+lui, a été conçu pour des incidents — et la différence se paie.
+
+**Elle ne notifiera qu'une seule fois.** Vérifié en rejouant la vraie classe
+`Tiers` d'Arche sur quatre jours :
+
+```
+Jour 1 — 22h    valeur  104  →  NOTIFICATION (palier 100)
+Jour 2 — 22h    valeur  112  →  silence
+Jour 3 — 22h    valeur   98  →  silence
+Jour 4 — 22h    valeur  130  →  silence
+```
+
+Ce n'est pas un défaut, c'est la règle qui rend les fenêtres glissantes
+utilisables : on ne signale qu'un palier **strictement supérieur** au plus haut
+déjà signalé, sinon 99 → 100 → 99 → 100 produirait des dizaines d'alertes pour
+un seul incident. Et le plus haut palier signalé ne redescend que sur
+acquittement explicite — la décision que tu as prise en écartant la remise à
+zéro automatique.
+
+Ajouter des paliers plus hauts (`100, 200, 300`) ne change rien : 112 n'atteint
+pas 200.
+
+**Ce qui fonctionne aujourd'hui :** acquitter chaque matin. Le comptage repart,
+et le franchissement du lendemain se signale à nouveau.
+
+```
+Jour 1 — 22h    valeur  104  →  NOTIFICATION (palier 100)   puis acquitté
+Jour 2 — 22h    valeur  112  →  NOTIFICATION (palier 100)   puis acquitté
+Jour 3 — 22h    valeur   98  →  silence
+Jour 4 — 22h    valeur  130  →  NOTIFICATION (palier 100)
+```
+
+Le geste est le bon, le mot ne l'est pas : le bouton dit « C'est traité », ce
+qui se lit mal pour cent paiements réussis.
+
+**Ce qui manque pour que ce soit propre :** un réarmement automatique quand la
+valeur repasse sous le plus bas palier. Deux lignes dans `ProbeRunner`, une
+colonne booléenne sur la sonde, et ce type de seuil récurrent se gérerait seul —
+sans toucher au modèle d'acquittement des incidents, qui doit rester manuel.
+C'est une décision à prendre, pas un oubli : dis-le-moi et je l'ajoute.
 
 ---
 
@@ -298,7 +352,7 @@ L'unité est lue **dans le corps de la notification**, qu'Arche compose ainsi :
 ```
 
 Donc sur un écran verrouillé, la nuit, par quelqu'un sans contexte. Elle doit
-faire une phrase, distinguer la sonde de ses dix-sept voisines, et nommer
+faire une phrase, distinguer la sonde de ses dix-huit voisines, et nommer
 l'objet métier plutôt que la table. C'est ce qui écarte « jambes » — *12 jambes
 sur 24 h* ne se lit pas.
 
@@ -321,10 +375,11 @@ sur 24 h* ne se lit pas.
 | 13 | `refus métier inconnus` | `3, 10, 30, 100` | `10, 100` | À 3 : au-delà, ce n'est plus un cas isolé mais un libellé nouveau qui mérite sa propre sonde. |
 | 14 | `paiements en échec` | `10, 50, 100, 250, 500` | `50, 250` | Un volume d'échecs est normal ; on guette le décrochage. |
 | 15 | `minutes sans paiement` | `30, 60, 180, 360` | — | **À régler après observation** — voir ci-dessous. |
+| 17 | `paiements réussis` | `100` | — | Le seuil que tu as demandé. Une seule notification tant qu'elle n'est pas acquittée — voir la note plus haut. |
 
 ### La sonde 15 mérite son propre paragraphe
 
-Les dix-sept autres comptent ce qui va mal. **Aucune ne se déclenche quand plus
+Les autres comptent ce qui va mal, ou ce qui va bien. **Aucune ne se déclenche quand plus
 rien n'arrive** — et c'est la panne la plus grave, parce qu'un compteur d'échecs
 à zéro se lit exactement comme un système en bonne santé.
 
