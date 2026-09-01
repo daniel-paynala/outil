@@ -12,3 +12,10 @@
 # (un gitlink vers un commit que ce dépôt ne sait pas retrouver), et il
 # apparaîtrait indéfiniment comme non suivi dans `git status`.
 mobile/
+
+# Dépôt de référence, cloné pour étude — pas du code d'Arche.
+#
+# `paynala-dashboard` a son propre dépôt et son propre cycle de vie. L'imbriquer
+# ici l'ajouterait comme gitlink, un pointeur vers un commit que ce dépôt ne
+# sait pas retrouver.
+monitoring-integration/

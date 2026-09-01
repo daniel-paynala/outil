@@ -8,12 +8,14 @@ use App\Models\InvitationToken;
 use App\Models\User;
 use App\Modules\Activity\Services\ActivityLogger;
 use App\Modules\Core\Services\SupabaseAdminClient;
+use App\Modules\Monitoring\Support\Capability;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Str;
+use Illuminate\Validation\Rules\Enum;
 use RuntimeException;
 
 class AdminUserController extends Controller
@@ -37,10 +39,19 @@ class AdminUserController extends Controller
             ]);
         }
 
+        // Les droits **accordés**, pas les droits effectifs : un administrateur
+        // les a tous par son rôle, et cocher ses cases donnerait à croire qu'on
+        // les lui a donnés — puis les décocher ne lui retirerait rien.
+        $capabilitiesByUser = DB::table('user_capabilities')
+            ->select('user_id', 'capability')
+            ->get()
+            ->groupBy('user_id')
+            ->map(fn ($lignes) => $lignes->pluck('capability')->values()->all());
+
         $users = User::query()
             ->orderBy('email')
             ->get(['id', 'email', 'name', 'role', 'avatar_path', 'created_at'])
-            ->map(function (User $u) use ($projectCounts, $supabaseByEmail) {
+            ->map(function (User $u) use ($projectCounts, $supabaseByEmail, $capabilitiesByUser) {
                 $sb = $supabaseByEmail[strtolower($u->email)] ?? null;
                 $invitationPending = $sb === null || empty($sb['email_confirmed_at']);
 
@@ -54,6 +65,7 @@ class AdminUserController extends Controller
                     'projects_count' => (int) ($projectCounts[$u->id] ?? 0),
                     'invitation_pending' => $invitationPending,
                     'last_sign_in_at' => $sb['last_sign_in_at'] ?? null,
+                    'capabilities' => $capabilitiesByUser[$u->id] ?? [],
                 ];
             });
 
@@ -202,6 +214,75 @@ class AdminUserController extends Controller
         }
 
         return response()->json($user->only(['id', 'email', 'name', 'role']));
+    }
+
+    /**
+     * Fixe les droits accordés à quelqu'un.
+     *
+     * ## Pourquoi remplacer plutôt qu'ajouter ou retirer
+     *
+     * L'écran présente des cases à cocher : ce que l'administrateur soumet est
+     * l'état qu'il veut voir, pas une différence. Un `POST droit` / `DELETE
+     * droit` obligerait l'interface à calculer cette différence, et deux
+     * onglets ouverts se marcheraient dessus — le second rejouerait un retrait
+     * décidé sur un état déjà périmé.
+     *
+     * ## Pourquoi c'est réservé aux administrateurs
+     *
+     * Un droit qui peut se propager de son porteur à qui il veut n'en est plus
+     * un. Superviser les bases est accordé ; ce n'est pas transmissible.
+     */
+    public function capabilities(Request $request, User $user): JsonResponse
+    {
+        $data = $request->validate([
+            'capabilities' => ['present', 'array', 'max:20'],
+            'capabilities.*' => ['string', new Enum(Capability::class)],
+        ]);
+
+        $voulus = array_values(array_unique($data['capabilities']));
+        $actuels = DB::table('user_capabilities')
+            ->where('user_id', $user->id)
+            ->pluck('capability')
+            ->all();
+
+        // Rien à faire : on ne réécrit pas des lignes identiques, ce qui
+        // effacerait `granted_by` et `granted_at` — la seule trace de qui a
+        // ouvert cette porte, et le jour où on la cherche, on la cherche
+        // vraiment.
+        if (array_diff($voulus, $actuels) === [] && array_diff($actuels, $voulus) === []) {
+            return response()->json(['capabilities' => $voulus]);
+        }
+
+        $auteur = $request->attributes->get('supabase_user_id');
+
+        DB::transaction(function () use ($user, $voulus, $actuels, $auteur) {
+            $aRetirer = array_diff($actuels, $voulus);
+            if ($aRetirer !== []) {
+                DB::table('user_capabilities')
+                    ->where('user_id', $user->id)
+                    ->whereIn('capability', array_values($aRetirer))
+                    ->delete();
+            }
+
+            foreach (array_diff($voulus, $actuels) as $droit) {
+                DB::table('user_capabilities')->insert([
+                    'user_id' => $user->id,
+                    'capability' => $droit,
+                    'granted_by' => $auteur,
+                    'granted_at' => now(),
+                ]);
+            }
+        });
+
+        $this->activity->logGlobal(
+            $auteur,
+            'admin.user.capabilities',
+            $user,
+            $user->email,
+            ['granted' => $voulus, 'previous' => array_values($actuels)],
+        );
+
+        return response()->json(['capabilities' => $voulus]);
     }
 
     public function destroy(Request $request, User $user, SupabaseAdminClient $supabase): JsonResponse

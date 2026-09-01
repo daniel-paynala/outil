@@ -17,7 +17,35 @@ export type AdminUser = {
   projects_count: number;
   invitation_pending?: boolean;
   last_sign_in_at?: string | null;
+
+  /**
+   * Les droits **accordés**, pas les droits effectifs.
+   *
+   * Un administrateur les a tous par son rôle : les cocher pour lui donnerait à
+   * croire qu'on les lui a donnés, puis les décocher ne lui retirerait rien.
+   */
+  capabilities?: string[];
 };
+
+/**
+ * Les droits qui s'accordent au cas par cas.
+ *
+ * La supervision est le premier — elle donne à voir des bases de production
+ * entières, ce qui n'est ni « pour tout le monde » ni « réservé aux
+ * administrateurs ».
+ */
+const DROITS: { value: string; label: string; hint: string }[] = [
+  {
+    value: "monitoring",
+    label: "Supervision",
+    hint: "Voir l'état des bases et acquitter les incidents.",
+  },
+  {
+    value: "monitoring.admin",
+    label: "Administration",
+    hint: "Brancher une base et écrire ses sondes. Implique la supervision.",
+  },
+];
 
 type Draft = { name: string; role: "member" | "admin" };
 
@@ -36,6 +64,51 @@ export default function UsersTable({
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [resendingId, setResendingId] = useState<string | null>(null);
   const [showAdd, setShowAdd] = useState(false);
+  const [droitsEnCours, setDroitsEnCours] = useState<string | null>(null);
+
+  /**
+   * Bascule un droit et enregistre tout de suite.
+   *
+   * Pas de bouton « Enregistrer » ici, contrairement au nom et au rôle : une
+   * porte qu'on croit avoir fermée et qui attend une confirmation reste
+   * ouverte, et personne ne relit une ligne d'utilisateur pour vérifier.
+   *
+   * On envoie la liste complète voulue plutôt qu'une différence — deux onglets
+   * ouverts se marcheraient dessus, le second rejouant un retrait décidé sur un
+   * état déjà périmé.
+   */
+  async function basculerDroit(u: AdminUser, droit: string) {
+    const actuels = u.capabilities ?? [];
+    const voulus = actuels.includes(droit)
+      ? actuels.filter((c) => c !== droit)
+      : [...actuels, droit];
+
+    setDroitsEnCours(`${u.id}:${droit}`);
+    try {
+      const res = await apiFetch(`/api/admin/users/${u.id}/capabilities`, {
+        method: "PUT",
+        body: JSON.stringify({ capabilities: voulus }),
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error(body.error ?? `HTTP ${res.status}`);
+      }
+
+      const libelle = DROITS.find((d) => d.value === droit)?.label ?? droit;
+      toast.success(
+        voulus.includes(droit) ? "Droit accordé" : "Droit retiré",
+        `${libelle} · ${u.email}`,
+      );
+      startTransition(() => router.refresh());
+    } catch (e) {
+      toast.error(
+        "Droit inchangé",
+        e instanceof Error ? e.message : "Erreur inconnue",
+      );
+    } finally {
+      setDroitsEnCours(null);
+    }
+  }
 
   function getDraft(u: AdminUser): Draft {
     return drafts[u.id] ?? { name: u.name ?? "", role: u.role };
@@ -135,6 +208,7 @@ export default function UsersTable({
               <th className="text-left px-4 py-2.5 font-medium">Email</th>
               <th className="text-left px-4 py-2.5 font-medium">Nom</th>
               <th className="text-left px-4 py-2.5 font-medium">Rôle</th>
+              <th className="text-left px-4 py-2.5 font-medium">Droits</th>
               <th className="text-left px-4 py-2.5 font-medium">Projets</th>
               <th className="text-right px-4 py-2.5 font-medium">Actions</th>
             </tr>
@@ -194,6 +268,40 @@ export default function UsersTable({
                       <option value="member">member</option>
                       <option value="admin">admin</option>
                     </select>
+                  </td>
+                  <td className="px-4 py-2.5">
+                    {draft.role === "admin" ? (
+                      <span className="text-xs text-[var(--muted)]">
+                        tous, par le rôle
+                      </span>
+                    ) : (
+                      <div className="flex flex-wrap gap-1.5">
+                        {DROITS.map((d) => {
+                          const accorde = (u.capabilities ?? []).includes(
+                            d.value,
+                          );
+                          const enCours = droitsEnCours === `${u.id}:${d.value}`;
+
+                          return (
+                            <button
+                              key={d.value}
+                              type="button"
+                              onClick={() => basculerDroit(u, d.value)}
+                              disabled={enCours || pending}
+                              title={d.hint}
+                              aria-pressed={accorde}
+                              className={`rounded-full border px-2 py-0.5 text-[11px] transition-colors disabled:opacity-40 ${
+                                accorde
+                                  ? "border-[var(--color-brand-red)] bg-[var(--color-brand-red)]/10 text-[var(--color-brand-red)]"
+                                  : "border-[var(--border)] text-[var(--muted)] hover:text-[var(--foreground)]"
+                              }`}
+                            >
+                              {d.label}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    )}
                   </td>
                   <td className="px-4 py-2.5 tabular-nums text-[var(--muted)]">
                     {u.projects_count}

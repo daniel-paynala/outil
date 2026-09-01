@@ -22,7 +22,9 @@ export default async function AdminUsersPage() {
         </h1>
         <p className="mt-2 text-sm text-[var(--muted)]">
           {users.length} utilisateur{users.length > 1 ? "s" : ""} sur Arche.
-          Modifie le rôle ou le nom puis enregistre.
+          Modifie le rôle ou le nom puis enregistre. Les droits, eux,
+          s&apos;appliquent au clic — une porte ne reste pas ouverte en
+          attendant une confirmation.
         </p>
       </header>
 

@@ -3,7 +3,7 @@
 import Link from "next/link";
 import Image from "next/image";
 import { usePathname, useRouter } from "next/navigation";
-import {
+import { Activity,
   LayoutDashboard,
   FolderKanban,
   ListChecks,
@@ -38,24 +38,36 @@ const NAV: NavItem[] = [
 export default function Sidebar({
   email,
   isAdmin = false,
+  capabilities = [],
   avatarUrl = null,
   name = null,
 }: {
   email: string;
   isAdmin?: boolean;
+  /** Droits accordés au cas par cas — voir `user_capabilities` côté API. */
+  capabilities?: string[];
   avatarUrl?: string | null;
   name?: string | null;
 }) {
   const pathname = usePathname();
   const router = useRouter();
   const supabase = createClient();
-  const nav: NavItem[] = isAdmin
-    ? [
-        ...NAV,
-        { href: "/admin/users", label: "Utilisateurs", icon: Shield },
-        { href: "/admin/audit", label: "Journal d'audit", icon: ScrollText },
-      ]
-    : NAV;
+  // La supervision donne à voir des bases de production : elle n'apparaît que
+  // pour qui en a le droit. Le reste de l'outil reste visible de tous.
+  const peutSuperviser = capabilities.includes("monitoring");
+
+  const nav: NavItem[] = [
+    ...NAV,
+    ...(peutSuperviser
+      ? [{ href: "/monitoring", label: "Supervision", icon: Activity }]
+      : []),
+    ...(isAdmin
+      ? [
+          { href: "/admin/users", label: "Utilisateurs", icon: Shield },
+          { href: "/admin/audit", label: "Journal d'audit", icon: ScrollText },
+        ]
+      : []),
+  ];
 
   async function handleLogout() {
     await supabase.auth.signOut();

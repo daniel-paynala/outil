@@ -312,6 +312,7 @@ Route::middleware('supabase.auth')->group(function () {
         Route::get('users', [AdminUserController::class, 'index']);
         Route::post('users', [AdminUserController::class, 'store']);
         Route::patch('users/{user}', [AdminUserController::class, 'update']);
+        Route::put('users/{user}/capabilities', [AdminUserController::class, 'capabilities']);
         Route::post('users/{user}/resend-invite', [AdminUserController::class, 'resendInvite']);
         Route::delete('users/{user}', [AdminUserController::class, 'destroy']);
         Route::get('audit-logs', [AdminAuditController::class, 'index']);

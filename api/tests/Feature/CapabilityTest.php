@@ -158,4 +158,113 @@ class CapabilityTest extends TestCase
             ->assertOk()
             ->assertJsonPath('capabilities', []);
     }
+
+    // ── Accorder et retirer ─────────────────────────────────────────────
+
+    public function test_un_administrateur_accorde_un_droit(): void
+    {
+        [, $entete] = $this->authenticate(['role' => 'admin']);
+        [$cible] = $this->authenticate();
+
+        $this->putJson("/api/admin/users/{$cible->id}/capabilities", [
+            'capabilities' => [Capability::Monitoring->value],
+        ], $entete)->assertOk();
+
+        $this->assertTrue($cible->fresh()->can(Capability::Monitoring));
+    }
+
+    public function test_soumettre_une_liste_vide_retire_tout(): void
+    {
+        // L'écran envoie l'état voulu, pas une différence : décocher la
+        // dernière case doit refermer la porte.
+        [, $entete] = $this->authenticate(['role' => 'admin']);
+        [$cible] = $this->authenticate();
+        $this->accorder($cible->id, Capability::MonitoringAdmin);
+
+        $this->putJson("/api/admin/users/{$cible->id}/capabilities", [
+            'capabilities' => [],
+        ], $entete)->assertOk();
+
+        $this->assertSame([], $cible->fresh()->capabilities());
+    }
+
+    public function test_reenvoyer_les_memes_droits_preserve_la_trace(): void
+    {
+        // Réécrire des lignes identiques effacerait `granted_by` et
+        // `granted_at` — la seule trace de qui a ouvert cette porte, et le jour
+        // où on la cherche, on la cherche vraiment.
+        [$admin, $entete] = $this->authenticate(['role' => 'admin']);
+        [$cible] = $this->authenticate();
+
+        $this->putJson("/api/admin/users/{$cible->id}/capabilities", [
+            'capabilities' => [Capability::Monitoring->value],
+        ], $entete)->assertOk();
+
+        $pose = DB::table('user_capabilities')
+            ->where('user_id', $cible->id)
+            ->first();
+
+        $this->travel(1)->hours();
+
+        $this->putJson("/api/admin/users/{$cible->id}/capabilities", [
+            'capabilities' => [Capability::Monitoring->value],
+        ], $entete)->assertOk();
+
+        $apres = DB::table('user_capabilities')
+            ->where('user_id', $cible->id)
+            ->first();
+
+        $this->assertSame($pose->granted_at, $apres->granted_at);
+        $this->assertSame($admin->id, $apres->granted_by);
+    }
+
+    public function test_un_droit_inconnu_est_refuse(): void
+    {
+        // Sans cette validation, une faute de frappe s'enregistrerait sans rien
+        // accorder : l'écran montrerait le droit comme donné, et il ne le
+        // serait pas.
+        [, $entete] = $this->authenticate(['role' => 'admin']);
+        [$cible] = $this->authenticate();
+
+        $this->putJson("/api/admin/users/{$cible->id}/capabilities", [
+            'capabilities' => ['monitoring.superviseur'],
+        ], $entete)->assertStatus(422);
+    }
+
+    public function test_un_porteur_du_droit_ne_peut_pas_le_transmettre(): void
+    {
+        // Un droit qui se propage de son porteur à qui il veut n'en est plus
+        // un : seul un administrateur accorde.
+        [$porteur, $entete] = $this->authenticate();
+        $this->accorder($porteur->id, Capability::MonitoringAdmin);
+        [$cible] = $this->authenticate();
+
+        $this->putJson("/api/admin/users/{$cible->id}/capabilities", [
+            'capabilities' => [Capability::Monitoring->value],
+        ], $entete)->assertForbidden();
+
+        $this->assertSame([], $cible->fresh()->capabilities());
+    }
+
+    public function test_un_droit_retire_cesse_d_agir_tout_de_suite(): void
+    {
+        // L'authentification garde un instantané court de chaque compte, mais
+        // il ne porte que la ligne `users` : les droits sont relus dans leur
+        // table à chaque requête. Ce test verrouille cette propriété — le jour
+        // où quelqu'un voudra les mettre en cache eux aussi « pour une requête
+        // de moins », il apprendra ici ce que ça coûte : une porte qu'on ferme
+        // et qui reste ouverte une minute, soit très exactement le temps qu'il
+        // faut pour lire ce qu'on vient d'interdire.
+        [, $adminEntete] = $this->authenticate(['role' => 'admin']);
+        [$cible, $cibleEntete] = $this->authenticate();
+        $this->accorder($cible->id, Capability::Monitoring);
+
+        $this->getJson('/api/_test/protegee', $cibleEntete)->assertOk();
+
+        $this->putJson("/api/admin/users/{$cible->id}/capabilities", [
+            'capabilities' => [],
+        ], $adminEntete)->assertOk();
+
+        $this->getJson('/api/_test/protegee', $cibleEntete)->assertNotFound();
+    }
 }
