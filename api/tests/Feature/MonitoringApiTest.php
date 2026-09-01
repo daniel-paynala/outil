@@ -340,4 +340,165 @@ class MonitoringApiTest extends TestCase
 
         $this->assertSame('Airtel Money', $base->fresh()->name);
     }
+
+    // ── La trace ────────────────────────────────────────────────────────
+
+    public function test_acquitter_laisse_une_trace_avec_les_paliers(): void
+    {
+        // Acquitter est une décision, pas une manipulation : quelqu'un déclare
+        // que l'incident est traité et fait repartir le comptage. Sans trace,
+        // la question « qui a dit que c'était réglé, et à quel niveau ? » n'a
+        // plus de réponse — et c'est la première qu'on pose si ça recommence.
+        [$user, $entetes] = $this->authenticate();
+        $this->accorder($user->id, Capability::Monitoring);
+        $sonde = $this->sonde($this->base());
+
+        $this->postJson(
+            "/api/monitoring/probes/{$sonde->id}/acknowledge",
+            [],
+            $entetes,
+        )->assertOk();
+
+        $trace = DB::table('activity_logs')
+            ->where('action', 'monitoring.probe.acknowledged')
+            ->first();
+
+        $this->assertNotNull($trace);
+        $this->assertSame($user->id, $trace->actor_id);
+        $this->assertSame('Time-outs', $trace->subject_name);
+        $this->assertSame(
+            ['24h' => 10],
+            json_decode($trace->metadata, true)['tiers'],
+        );
+    }
+
+    public function test_supprimer_une_sonde_conserve_sa_requete(): void
+    {
+        // La ligne disparaît ; ce qu'elle surveillait doit survivre. Sinon
+        // « pourquoi ne sommes-nous plus alertés là-dessus ? » n'a pas de
+        // réponse.
+        [$user, $entetes] = $this->authenticate();
+        $this->accorder($user->id, Capability::MonitoringAdmin);
+        $sonde = $this->sonde($this->base());
+
+        $this->deleteJson("/api/monitoring/probes/{$sonde->id}", [], $entetes)
+            ->assertOk();
+
+        $trace = DB::table('activity_logs')
+            ->where('action', 'monitoring.probe.deleted')
+            ->first();
+
+        $this->assertSame(
+            'select count(*) as valeur from payment',
+            json_decode($trace->metadata, true)['query'],
+        );
+    }
+
+    public function test_retirer_une_base_est_journalise_avant_la_cascade(): void
+    {
+        // Journalisé après coup, il ne resterait qu'un identifiant sans nom —
+        // et le nombre de sondes emportées, la seule mesure de ce que le geste
+        // a coûté, serait déjà zéro.
+        [$user, $entetes] = $this->authenticate();
+        $this->accorder($user->id, Capability::MonitoringAdmin);
+        $base = $this->base();
+        $this->sonde($base);
+
+        $this->deleteJson("/api/monitoring/databases/{$base->id}", [], $entetes)
+            ->assertOk();
+
+        $trace = DB::table('activity_logs')
+            ->where('action', 'monitoring.database.removed')
+            ->first();
+
+        $this->assertSame('Airtel Money', $trace->subject_name);
+        $this->assertSame(1, json_decode($trace->metadata, true)['probes']);
+    }
+
+    public function test_la_trace_ne_contient_jamais_le_mot_de_passe(): void
+    {
+        // Le journal d'audit se consulte depuis l'application. Y déposer des
+        // identifiants ferait du registre censé surveiller les accès le
+        // meilleur endroit où les voler.
+        [$user, $entetes] = $this->authenticate();
+        $this->accorder($user->id, Capability::MonitoringAdmin);
+        $base = $this->base();
+
+        $this->deleteJson("/api/monitoring/databases/{$base->id}", [], $entetes)
+            ->assertOk();
+
+        $traces = DB::table('activity_logs')->get()->pluck('metadata')->implode(' ');
+        $this->assertStringNotContainsString('motdepasse-secret', $traces);
+        $this->assertStringNotContainsString('password', $traces);
+    }
+
+    public function test_renommer_une_base_garde_l_ancien_nom(): void
+    {
+        [$user, $entetes] = $this->authenticate();
+        $this->accorder($user->id, Capability::MonitoringAdmin);
+        $base = $this->base();
+
+        $this->patchJson("/api/monitoring/databases/{$base->id}", [
+            'name' => 'Airtel Money — production',
+        ], $entetes)->assertOk();
+
+        $trace = DB::table('activity_logs')
+            ->where('action', 'monitoring.database.renamed')
+            ->first();
+
+        $this->assertSame(
+            'Airtel Money',
+            json_decode($trace->metadata, true)['from'],
+        );
+    }
+
+    public function test_une_reverification_sans_changement_ne_trace_rien(): void
+    {
+        // La revérification est aussi appelée à la main pour se rassurer. En
+        // tracer chacune noierait sous des lignes identiques le jour où une
+        // base bascule vraiment.
+        [$user, $entetes] = $this->authenticate();
+        $this->accorder($user->id, Capability::MonitoringAdmin);
+        $base = $this->base();
+
+        $this->mock(DatabaseConnector::class)
+            ->shouldReceive('verifyReadOnly')
+            ->andReturn(['ok' => true, 'error' => null]);
+
+        $this->postJson(
+            "/api/monitoring/databases/{$base->id}/verify",
+            [],
+            $entetes,
+        )->assertOk();
+
+        $this->assertSame(
+            0,
+            DB::table('activity_logs')->where('action', 'like', 'monitoring.database.%')->count(),
+        );
+    }
+
+    public function test_une_base_qui_bascule_est_journalisee(): void
+    {
+        [$user, $entetes] = $this->authenticate();
+        $this->accorder($user->id, Capability::MonitoringAdmin);
+        $base = $this->base();
+
+        $this->mock(DatabaseConnector::class)
+            ->shouldReceive('verifyReadOnly')
+            ->andReturn([
+                'ok' => false,
+                'error' => 'Ces identifiants permettent d\'écrire.',
+            ]);
+
+        $this->postJson(
+            "/api/monitoring/databases/{$base->id}/verify",
+            [],
+            $entetes,
+        )->assertOk();
+
+        $this->assertDatabaseHas('activity_logs', [
+            'action' => 'monitoring.database.disabled',
+            'subject_name' => 'Airtel Money',
+        ]);
+    }
 }

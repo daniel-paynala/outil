@@ -3,6 +3,7 @@
 namespace App\Modules\Monitoring\Http\Controllers;
 
 use App\Http\Controllers\Controller;
+use App\Modules\Activity\Services\ActivityLogger;
 use App\Modules\Monitoring\Models\MonitoredDatabase;
 use App\Modules\Monitoring\Services\DatabaseConnector;
 use Illuminate\Http\JsonResponse;
@@ -19,7 +20,10 @@ use Illuminate\Support\Str;
  */
 class DatabaseController extends Controller
 {
-    public function __construct(private readonly DatabaseConnector $connector) {}
+    public function __construct(
+        private readonly DatabaseConnector $connector,
+        private readonly ActivityLogger $activity,
+    ) {}
 
     public function index(): JsonResponse
     {
@@ -73,6 +77,18 @@ class DatabaseController extends Controller
         $base->read_only_verified_at = now();
         $base->save();
 
+        // L'hôte et l'utilisateur, jamais le mot de passe. Le journal d'audit
+        // se consulte depuis l'application : y déposer des identifiants
+        // ferait du registre censé surveiller les accès le meilleur endroit
+        // où les voler.
+        $this->activity->logGlobal(
+            $this->userId($request),
+            'monitoring.database.added',
+            $base,
+            $base->name,
+            ['host' => $base->host, 'dbname' => $base->dbname, 'username' => $base->username],
+        );
+
         return response()->json($base->fresh(), 201);
     }
 
@@ -114,7 +130,18 @@ class DatabaseController extends Controller
         );
 
         if ($connexion === []) {
-            $database->update(['name' => $data['name'] ?? $database->name]);
+            $avant = $database->name;
+            $database->update(['name' => $data['name'] ?? $avant]);
+
+            if ($database->name !== $avant) {
+                $this->activity->logGlobal(
+                    $this->userId($request),
+                    'monitoring.database.renamed',
+                    $database,
+                    $database->name,
+                    ['from' => $avant],
+                );
+            }
 
             return response()->json($database->fresh());
         }
@@ -139,6 +166,14 @@ class DatabaseController extends Controller
             'last_error' => null,
         ]);
 
+        $this->activity->logGlobal(
+            $this->userId($request),
+            'monitoring.database.updated',
+            $database,
+            $database->name,
+            ['changed' => array_keys($data)],
+        );
+
         return response()->json($database->fresh());
     }
 
@@ -148,8 +183,9 @@ class DatabaseController extends Controller
      * Les droits d'un compte changent sans prévenir. Une base dont l'accès est
      * devenu inscriptible doit cesser d'être interrogée, et le dire.
      */
-    public function verify(MonitoredDatabase $database): JsonResponse
+    public function verify(Request $request, MonitoredDatabase $database): JsonResponse
     {
+        $etaitUtilisable = $database->isUsable();
         $verdict = $this->connector->verifyReadOnly($database);
 
         $database->update([
@@ -157,11 +193,40 @@ class DatabaseController extends Controller
             'last_error' => $verdict['error'],
         ]);
 
+        // Seul le **changement** d'état est journalisé. La revérification est
+        // aussi appelée à la main pour se rassurer : en tracer chacune
+        // noierait sous des lignes identiques le jour où une base bascule.
+        if ($etaitUtilisable !== $verdict['ok']) {
+            $this->activity->logGlobal(
+                $this->userId($request),
+                $verdict['ok']
+                    ? 'monitoring.database.restored'
+                    : 'monitoring.database.disabled',
+                $database,
+                $database->name,
+                ['reason' => $verdict['error']],
+            );
+        }
+
         return response()->json($database->fresh());
     }
 
-    public function destroy(MonitoredDatabase $database): JsonResponse
+    public function destroy(Request $request, MonitoredDatabase $database): JsonResponse
     {
+        // Journalisé **avant** la suppression : après, la ligne n'existe plus
+        // et il ne resterait qu'un identifiant sans nom à montrer.
+        $this->activity->logGlobal(
+            $this->userId($request),
+            'monitoring.database.removed',
+            $database,
+            $database->name,
+            [
+                'host' => $database->host,
+                'dbname' => $database->dbname,
+                'probes' => $database->probes()->count(),
+            ],
+        );
+
         // Les sondes suivent par cascade : une sonde sans base ne peut rien
         // interroger, et la garder ne ferait qu'encombrer l'écran.
         $database->delete();

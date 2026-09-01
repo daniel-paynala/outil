@@ -3,6 +3,7 @@
 namespace App\Modules\Monitoring\Http\Controllers;
 
 use App\Http\Controllers\Controller;
+use App\Modules\Activity\Services\ActivityLogger;
 use App\Modules\Monitoring\Models\MonitoredDatabase;
 use App\Modules\Monitoring\Models\MonitoringAlert;
 use App\Modules\Monitoring\Models\MonitoringProbe;
@@ -18,7 +19,10 @@ use Throwable;
  */
 class ProbeController extends Controller
 {
-    public function __construct(private readonly DatabaseConnector $connector) {}
+    public function __construct(
+        private readonly DatabaseConnector $connector,
+        private readonly ActivityLogger $activity,
+    ) {}
 
     /**
      * L'état de la supervision, en un appel.
@@ -62,12 +66,21 @@ class ProbeController extends Controller
 
         $this->remplacerFenetres($sonde, $data['windows']);
 
+        $this->activity->logGlobal(
+            $this->userId($request),
+            'monitoring.probe.created',
+            $sonde,
+            $sonde->title,
+            ['database' => $sonde->database?->name, 'query' => $sonde->query],
+        );
+
         return response()->json($sonde->load('windows'), 201);
     }
 
     public function update(Request $request, MonitoringProbe $probe): JsonResponse
     {
         $data = $this->valider($request);
+        $requeteAvant = $probe->query;
 
         $probe->update([
             'database_id' => $data['database_id'],
@@ -82,11 +95,31 @@ class ProbeController extends Controller
         // franchissement de la nouvelle.
         $this->remplacerFenetres($probe, $data['windows']);
 
+        // La requête est journalisée en entier, pas seulement « modifiée ».
+        // Une sonde qui cesse de signaler après une modification pose une
+        // seule question — qu'est-ce qu'elle comptait avant ? — et sans le
+        // texte d'avant, personne ne peut y répondre.
+        $this->activity->logGlobal(
+            $this->userId($request),
+            'monitoring.probe.updated',
+            $probe,
+            $probe->title,
+            ['query_before' => $requeteAvant, 'query_after' => $probe->query],
+        );
+
         return response()->json($probe->fresh()->load('windows'));
     }
 
-    public function destroy(MonitoringProbe $probe): JsonResponse
+    public function destroy(Request $request, MonitoringProbe $probe): JsonResponse
     {
+        $this->activity->logGlobal(
+            $this->userId($request),
+            'monitoring.probe.deleted',
+            $probe,
+            $probe->title,
+            ['database' => $probe->database?->name, 'query' => $probe->query],
+        );
+
         $probe->delete();
 
         return response()->json(['deleted' => true]);
@@ -139,6 +172,12 @@ class ProbeController extends Controller
      */
     public function acknowledge(Request $request, MonitoringProbe $probe): JsonResponse
     {
+        $paliersAcquittes = $probe->windows()
+            ->where('highest_tier', '>', 0)
+            ->get()
+            ->mapWithKeys(fn ($f) => ["{$f->hours}h" => $f->highest_tier])
+            ->all();
+
         $probe->update([
             'counting_from' => now(),
             'acknowledged_by' => $this->userId($request),
@@ -147,6 +186,21 @@ class ProbeController extends Controller
         // Les paliers se rouvrent tous : un nouveau franchissement doit se
         // signaler, même plus bas que celui qu'on vient de traiter.
         $probe->windows()->update(['highest_tier' => 0]);
+
+        // Acquitter est une décision, pas une manipulation : quelqu'un déclare
+        // que l'incident est traité et fait repartir le comptage. Les valeurs
+        // au moment du geste sont conservées — c'est ce qui permettra de dire,
+        // plus tard, si l'incident avait vraiment été traité.
+        $this->activity->logGlobal(
+            $this->userId($request),
+            'monitoring.probe.acknowledged',
+            $probe,
+            $probe->title,
+            [
+                'database' => $probe->database?->name,
+                'tiers' => $paliersAcquittes,
+            ],
+        );
 
         return response()->json($probe->fresh()->load(['windows', 'acknowledger']));
     }

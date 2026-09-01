@@ -12,6 +12,11 @@ import {
   Activity,
   Loader2,
   ScrollText,
+  ShieldCheck,
+  AlertTriangle,
+  CheckCheck,
+  Radar,
+  Database as DatabaseIcon,
 } from "lucide-react";
 import { clsx } from "clsx";
 import { apiFetch } from "@/lib/api/client";
@@ -293,6 +298,66 @@ function describeAction(action: string): {
       Icon: Users,
       label: "a changé le rôle de",
       color: "var(--color-warning)",
+    },
+
+    // ── Supervision des bases ─────────────────────────────────────────
+    // Brancher une base de production est le geste le plus sensible qu'Arche
+    // permette : il donne à lire des montants, des numéros de clients et des
+    // volumes d'activité. Il se lit ici comme tel.
+    "admin.user.capabilities": {
+      Icon: ShieldCheck,
+      label: "a changé les droits de",
+      color: "var(--color-warning)",
+    },
+    "monitoring.database.added": {
+      Icon: DatabaseIcon,
+      label: "a branché la base",
+      color: "var(--color-warning)",
+    },
+    "monitoring.database.renamed": {
+      Icon: DatabaseIcon,
+      label: "a renommé la base",
+      color: "var(--muted)",
+    },
+    "monitoring.database.updated": {
+      Icon: DatabaseIcon,
+      label: "a changé l'accès à la base",
+      color: "var(--color-warning)",
+    },
+    "monitoring.database.removed": {
+      Icon: DatabaseIcon,
+      label: "a retiré la base",
+      color: "var(--color-danger)",
+    },
+    "monitoring.database.disabled": {
+      Icon: AlertTriangle,
+      label: "a mis à l'arrêt la base",
+      color: "var(--color-danger)",
+    },
+    "monitoring.database.restored": {
+      Icon: ShieldCheck,
+      label: "a remis en service la base",
+      color: "var(--color-success)",
+    },
+    "monitoring.probe.created": {
+      Icon: Radar,
+      label: "a créé la sonde",
+      color: "var(--color-success)",
+    },
+    "monitoring.probe.updated": {
+      Icon: Radar,
+      label: "a modifié la sonde",
+      color: "var(--color-warning)",
+    },
+    "monitoring.probe.deleted": {
+      Icon: Radar,
+      label: "a supprimé la sonde",
+      color: "var(--color-danger)",
+    },
+    "monitoring.probe.acknowledged": {
+      Icon: CheckCheck,
+      label: "a déclaré traité l'incident",
+      color: "var(--color-info)",
     },
   };
   return (
