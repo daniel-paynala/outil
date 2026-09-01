@@ -72,9 +72,7 @@ export default function DatabaseDrawer({
       toast.success("Base branchée", `${corps.name} · lecture seule constatée`);
       onSaved();
     } catch (e) {
-      setRefus(
-        e instanceof Error ? e.message : "Le serveur n'a pas répondu.",
-      );
+      setRefus(e instanceof Error ? e.message : "Le serveur n'a pas répondu.");
     } finally {
       setEnvoi(false);
     }
@@ -161,10 +159,7 @@ export default function DatabaseDrawer({
               </Field>
             </div>
             <div className="flex-1">
-              <Field
-                label="Mot de passe"
-                hint="Écrit une fois, jamais relu."
-              >
+              <Field label="Mot de passe" hint="Écrit une fois, jamais relu.">
                 <input
                   name="password"
                   type="password"

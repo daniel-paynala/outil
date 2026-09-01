@@ -121,21 +121,31 @@ export function severity(probe: Probe): number {
   return probe.windows.reduce((max, w) => Math.max(max, w.highest_tier), 0);
 }
 
-/** « il y a 4 min », « hier à 18:20 » — jamais un horodatage brut. */
-export function ago(iso: string | null): string {
+/**
+ * « il y a 4 min », « 28 août 18:20 » — jamais un horodatage brut.
+ *
+ * L'instant de référence est passé, jamais lu de l'horloge — voir
+ * `useMonitoringClock`, qui explique pourquoi. Un `maintenant` à zéro veut dire
+ * « on ne sait pas encore quelle heure il est » : la date complète est alors
+ * rendue telle quelle, ce qui est le cas avant l'hydratation.
+ */
+export function ago(iso: string | null, maintenant: number): string {
   if (!iso) return "jamais";
 
   const date = new Date(iso);
-  const secondes = Math.round((Date.now() - date.getTime()) / 1000);
+  const secondes = Math.round((maintenant - date.getTime()) / 1000);
 
-  if (secondes < 60) return "à l'instant";
-  if (secondes < 3600) return `il y a ${Math.floor(secondes / 60)} min`;
-  if (secondes < 86_400) return `il y a ${Math.floor(secondes / 3600)} h`;
+  if (maintenant !== 0) {
+    if (secondes < 60) return "à l'instant";
+    if (secondes < 3600) return `il y a ${Math.floor(secondes / 60)} min`;
+    if (secondes < 86_400) return `il y a ${Math.floor(secondes / 3600)} h`;
+  }
 
   return date.toLocaleDateString("fr-FR", {
     day: "numeric",
     month: "short",
     hour: "2-digit",
     minute: "2-digit",
+    timeZone: "UTC",
   });
 }

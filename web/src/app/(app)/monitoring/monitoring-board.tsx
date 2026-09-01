@@ -1,6 +1,12 @@
 "use client";
 
-import { useMemo, useState, useTransition } from "react";
+import {
+  createContext,
+  useContext,
+  useMemo,
+  useState,
+  useTransition,
+} from "react";
 import { useRouter } from "next/navigation";
 import {
   AlertTriangle,
@@ -15,8 +21,9 @@ import {
 
 import { apiFetch } from "@/lib/api/client";
 import { useToast } from "@/core/toast/toast-context";
+import { useMonitoringClock } from "@/lib/monitoring/clock";
 import {
-  ago,
+  ago as depuis,
   hasIncident,
   nextTier,
   severity,
@@ -28,6 +35,20 @@ import {
 
 import DatabaseDrawer from "./database-drawer";
 import ProbeDrawer from "./probe-drawer";
+
+/**
+ * L'heure de l'écran, avancée toutes les 30 s.
+ *
+ * Ambiante plutôt que passée de composant en composant : « quelle heure
+ * est-il » n'appartient à aucune section, et les quatre qui l'utilisent sont à
+ * trois niveaux d'imbrication les unes des autres.
+ */
+const Horloge = createContext(0);
+
+/** L'heure courante de l'écran, à passer à `depuis`. */
+function useHorloge(): number {
+  return useContext(Horloge);
+}
 
 export default function MonitoringBoard({
   probes,
@@ -42,6 +63,7 @@ export default function MonitoringBoard({
   alerts: MonitoringAlert[];
   canAdmin: boolean;
 }) {
+  const maintenant = useMonitoringClock();
   const router = useRouter();
   const toast = useToast();
   const [, startTransition] = useTransition();
@@ -96,117 +118,119 @@ export default function MonitoringBoard({
   }
 
   return (
-    <div className="space-y-8">
-      <header className="flex flex-wrap items-end gap-4">
-        <div className="flex-1 min-w-64">
-          <p className="text-xs uppercase tracking-wider text-[var(--muted)]">
-            Supervision
-          </p>
-          <h1 className="mt-1 text-2xl font-semibold tracking-tight">
-            Bases de production
-          </h1>
-          <p className="mt-2 text-sm text-[var(--muted)]">
-            {incidents.length === 0
-              ? `${probes.length} sonde${probes.length > 1 ? "s" : ""} en veille sur ${databases.length} base${databases.length > 1 ? "s" : ""}. Rien à signaler.`
-              : `${incidents.length} incident${incidents.length > 1 ? "s" : ""} en attente d'acquittement.`}
-          </p>
-        </div>
-
-        {canAdmin && (
-          <div className="flex gap-2">
-            <button
-              onClick={() => setBaseOuverte(true)}
-              className="inline-flex items-center gap-1.5 rounded-md border border-[var(--border)] px-3 py-1.5 text-sm hover:bg-[var(--surface)]"
-            >
-              <DatabaseIcon size={14} />
-              Brancher une base
-            </button>
-            <button
-              onClick={() => setSondeOuverte("nouvelle")}
-              disabled={databases.length === 0}
-              className="inline-flex items-center gap-1.5 rounded-md bg-[var(--color-brand-red)] px-3 py-1.5 text-sm font-medium text-white hover:bg-[var(--color-brand-red-600)] disabled:opacity-40"
-            >
-              <Plus size={14} />
-              Nouvelle sonde
-            </button>
+    <Horloge.Provider value={maintenant}>
+      <div className="space-y-8">
+        <header className="flex flex-wrap items-end gap-4">
+          <div className="flex-1 min-w-64">
+            <p className="text-xs uppercase tracking-wider text-[var(--muted)]">
+              Supervision
+            </p>
+            <h1 className="mt-1 text-2xl font-semibold tracking-tight">
+              Bases de production
+            </h1>
+            <p className="mt-2 text-sm text-[var(--muted)]">
+              {incidents.length === 0
+                ? `${probes.length} sonde${probes.length > 1 ? "s" : ""} en veille sur ${databases.length} base${databases.length > 1 ? "s" : ""}. Rien à signaler.`
+                : `${incidents.length} incident${incidents.length > 1 ? "s" : ""} en attente d'acquittement.`}
+            </p>
           </div>
+
+          {canAdmin && (
+            <div className="flex gap-2">
+              <button
+                onClick={() => setBaseOuverte(true)}
+                className="inline-flex items-center gap-1.5 rounded-md border border-[var(--border)] px-3 py-1.5 text-sm hover:bg-[var(--surface)]"
+              >
+                <DatabaseIcon size={14} />
+                Brancher une base
+              </button>
+              <button
+                onClick={() => setSondeOuverte("nouvelle")}
+                disabled={databases.length === 0}
+                className="inline-flex items-center gap-1.5 rounded-md bg-[var(--color-brand-red)] px-3 py-1.5 text-sm font-medium text-white hover:bg-[var(--color-brand-red-600)] disabled:opacity-40"
+              >
+                <Plus size={14} />
+                Nouvelle sonde
+              </button>
+            </div>
+          )}
+        </header>
+
+        {incidents.length > 0 && (
+          <section className="space-y-3">
+            <h2 className="flex items-center gap-2 text-sm font-medium">
+              <AlertTriangle size={15} className="text-[var(--color-danger)]" />
+              En attente d&apos;acquittement
+            </h2>
+            {incidents.map((sonde) => (
+              <ProbeCard
+                key={sonde.id}
+                probe={sonde}
+                canAdmin={canAdmin}
+                acknowledging={acquittement === sonde.id}
+                onAcknowledge={() => acquitter(sonde)}
+                onEdit={() => setSondeOuverte(sonde)}
+              />
+            ))}
+          </section>
         )}
-      </header>
 
-      {incidents.length > 0 && (
-        <section className="space-y-3">
-          <h2 className="flex items-center gap-2 text-sm font-medium">
-            <AlertTriangle size={15} className="text-[var(--color-danger)]" />
-            En attente d&apos;acquittement
-          </h2>
-          {incidents.map((sonde) => (
-            <ProbeCard
-              key={sonde.id}
-              probe={sonde}
-              canAdmin={canAdmin}
-              acknowledging={acquittement === sonde.id}
-              onAcknowledge={() => acquitter(sonde)}
-              onEdit={() => setSondeOuverte(sonde)}
-            />
-          ))}
-        </section>
-      )}
+        {calmes.length > 0 && (
+          <section className="space-y-3">
+            <h2 className="text-sm font-medium text-[var(--muted)]">
+              Sous surveillance
+            </h2>
+            {calmes.map((sonde) => (
+              <ProbeCard
+                key={sonde.id}
+                probe={sonde}
+                canAdmin={canAdmin}
+                acknowledging={false}
+                onEdit={() => setSondeOuverte(sonde)}
+              />
+            ))}
+          </section>
+        )}
 
-      {calmes.length > 0 && (
-        <section className="space-y-3">
-          <h2 className="text-sm font-medium text-[var(--muted)]">
-            Sous surveillance
-          </h2>
-          {calmes.map((sonde) => (
-            <ProbeCard
-              key={sonde.id}
-              probe={sonde}
-              canAdmin={canAdmin}
-              acknowledging={false}
-              onEdit={() => setSondeOuverte(sonde)}
-            />
-          ))}
-        </section>
-      )}
+        {probes.length === 0 && (
+          <p className="rounded-lg border border-dashed border-[var(--border)] px-6 py-10 text-center text-sm text-[var(--muted)]">
+            {databases.length === 0
+              ? "Aucune base branchée. Commence par en ajouter une — Arche vérifiera que l'accès est bien en lecture seule avant de l'enregistrer."
+              : "Aucune sonde. Une base branchée sans sonde n'est pas surveillée : elle est simplement joignable."}
+          </p>
+        )}
 
-      {probes.length === 0 && (
-        <p className="rounded-lg border border-dashed border-[var(--border)] px-6 py-10 text-center text-sm text-[var(--muted)]">
-          {databases.length === 0
-            ? "Aucune base branchée. Commence par en ajouter une — Arche vérifiera que l'accès est bien en lecture seule avant de l'enregistrer."
-            : "Aucune sonde. Une base branchée sans sonde n'est pas surveillée : elle est simplement joignable."}
-        </p>
-      )}
-
-      <DatabaseList
-        databases={databases}
-        canAdmin={canAdmin}
-        onAdd={() => setBaseOuverte(true)}
-      />
-
-      <AlertHistory alerts={alerts} />
-
-      {sondeOuverte && (
-        <ProbeDrawer
-          probe={sondeOuverte === "nouvelle" ? null : sondeOuverte}
+        <DatabaseList
           databases={databases}
-          onClose={() => setSondeOuverte(null)}
-          onSaved={() => {
-            setSondeOuverte(null);
-            startTransition(() => router.refresh());
-          }}
+          canAdmin={canAdmin}
+          onAdd={() => setBaseOuverte(true)}
         />
-      )}
 
-      {baseOuverte && (
-        <DatabaseDrawer
-          onClose={() => setBaseOuverte(false)}
-          onSaved={() => {
-            setBaseOuverte(false);
-            startTransition(() => router.refresh());
-          }}
-        />
-      )}
-    </div>
+        <AlertHistory alerts={alerts} />
+
+        {sondeOuverte && (
+          <ProbeDrawer
+            probe={sondeOuverte === "nouvelle" ? null : sondeOuverte}
+            databases={databases}
+            onClose={() => setSondeOuverte(null)}
+            onSaved={() => {
+              setSondeOuverte(null);
+              startTransition(() => router.refresh());
+            }}
+          />
+        )}
+
+        {baseOuverte && (
+          <DatabaseDrawer
+            onClose={() => setBaseOuverte(false)}
+            onSaved={() => {
+              setBaseOuverte(false);
+              startTransition(() => router.refresh());
+            }}
+          />
+        )}
+      </div>
+    </Horloge.Provider>
   );
 }
 
@@ -230,6 +254,7 @@ function ProbeCard({
   onAcknowledge?: () => void;
   onEdit: () => void;
 }) {
+  const maintenant = useHorloge();
   const ouvert = hasIncident(probe);
   const baseInerte = probe.database?.read_only_verified_at == null;
 
@@ -253,7 +278,8 @@ function ProbeCard({
           </div>
           <p className="mt-0.5 truncate text-xs text-[var(--muted)]">
             {probe.database?.name ?? "base inconnue"}
-            {probe.counting_from && ` · compté depuis ${ago(probe.counting_from)}`}
+            {probe.counting_from &&
+              ` · compté depuis ${depuis(probe.counting_from, maintenant)}`}
           </p>
         </div>
 
@@ -322,6 +348,7 @@ function WindowCell({
   window: ProbeWindow;
   unit: string;
 }) {
+  const maintenant = useHorloge();
   const valeur = fenetre.last_value;
   const suivant = nextTier(fenetre);
   const franchi = fenetre.highest_tier > 0;
@@ -350,7 +377,7 @@ function WindowCell({
               ? "observée, sans palier"
               : "au-delà du dernier palier"}
         {" · "}
-        {ago(fenetre.last_run_at)}
+        {depuis(fenetre.last_run_at, maintenant)}
       </p>
     </div>
   );
@@ -366,6 +393,7 @@ function DatabaseList({
   canAdmin: boolean;
   onAdd: () => void;
 }) {
+  const maintenant = useHorloge();
   const router = useRouter();
   const toast = useToast();
   const [enCours, setEnCours] = useState<string | null>(null);
@@ -458,7 +486,7 @@ function DatabaseList({
                   </span>
                   {base.read_only_verified_at ? (
                     <span
-                      title={`Lecture seule constatée ${ago(base.read_only_verified_at)}`}
+                      title={`Lecture seule constatée ${depuis(base.read_only_verified_at, maintenant)}`}
                       className="inline-flex items-center gap-1 rounded bg-[var(--color-success)]/10 px-1.5 py-0.5 text-[10px] font-medium text-[var(--color-success)]"
                     >
                       <ShieldCheck size={11} />
@@ -523,6 +551,8 @@ function DatabaseList({
  * pose une fois le calme revenu.
  */
 function AlertHistory({ alerts }: { alerts: MonitoringAlert[] }) {
+  const maintenant = useHorloge();
+
   if (alerts.length === 0) return null;
 
   return (
@@ -557,7 +587,7 @@ function AlertHistory({ alerts }: { alerts: MonitoringAlert[] }) {
                   {alerte.value}
                 </td>
                 <td className="px-4 py-2 text-[var(--muted)]">
-                  {ago(alerte.raised_at)}
+                  {depuis(alerte.raised_at, maintenant)}
                 </td>
               </tr>
             ))}

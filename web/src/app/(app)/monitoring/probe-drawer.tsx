@@ -119,7 +119,9 @@ export default function ProbeDrawer({
           : {
               ok: false,
               error:
-                corps.error ?? corps.detail ?? `La requête a échoué (${res.status}).`,
+                corps.error ??
+                corps.detail ??
+                `La requête a échoué (${res.status}).`,
             },
       );
     } catch (e) {
@@ -158,7 +160,9 @@ export default function ProbeDrawer({
       if (!res.ok) {
         const corps = await res.json().catch(() => ({}));
         throw new Error(
-          corps.message ?? corps.error ?? `Enregistrement refusé (${res.status}).`,
+          corps.message ??
+            corps.error ??
+            `Enregistrement refusé (${res.status}).`,
         );
       }
 
@@ -300,8 +304,8 @@ export default function ProbeDrawer({
                 {essai.ok ? (
                   <>
                     <strong className="tabular-nums">{essai.value}</strong>{" "}
-                    {unite || "événements"} sur les{" "}
-                    {fenetres[0]?.hours ?? 24} dernières heures.
+                    {unite || "événements"} sur les {fenetres[0]?.hours ?? 24}{" "}
+                    dernières heures.
                   </>
                 ) : (
                   essai.error
@@ -397,9 +401,10 @@ export default function ProbeDrawer({
             </div>
 
             <p className="mt-1.5 text-xs text-[var(--muted)]">
-              Une notification par palier franchi, une seule fois. Le comptage ne
-              repart qu&apos;au moment où quelqu&apos;un déclare l&apos;incident
-              traité — une fenêtre vide de paliers observe sans jamais alerter.
+              Une notification par palier franchi, une seule fois. Le comptage
+              ne repart qu&apos;au moment où quelqu&apos;un déclare
+              l&apos;incident traité — une fenêtre vide de paliers observe sans
+              jamais alerter.
             </p>
           </div>
 
