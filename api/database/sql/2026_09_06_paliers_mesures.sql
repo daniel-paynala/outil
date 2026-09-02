@@ -30,13 +30,28 @@
 -- distingue de toute autre sonde qui en porterait une.
 --
 -- Le compte de lignes touchées est affiché à la fin. Il doit valoir 3.
+--
+-- ## Pourquoi `last_run_at` repart à zéro
+--
+-- Une fenêtre de période se recharge selon ses heures — 24 pour ces trois-là.
+-- Elles ont donc tourné une fois, puis attendent demain. Tout ce qui a changé
+-- entre-temps — la décomposition par portefeuille, un déploiement, ces
+-- paliers — ne se verrait qu'après ce délai.
+--
+-- Vider `last_run_at` rend la fenêtre immédiatement due : elle recompte au
+-- prochain tour du planificateur, dans la minute. C'est le seul moyen de ne
+-- pas attendre un jour pour voir l'effet d'un changement, et c'est sans risque :
+-- on ne perd qu'un horodatage, jamais une valeur ni un palier signalé.
 
 update monitoring_probe_windows w
 set tiers = case w.mode
-    when 'mensuelle' then '[100000000, 250000000, 500000000, 1000000000]'
-    when 'annuelle'  then '[1000000000, 2000000000, 3000000000, 5000000000]'
-    when 'totale'    then '[1500000000, 2000000000, 3000000000, 5000000000, 10000000000]'
-end::jsonb
+        when 'mensuelle' then '[100000000, 250000000, 500000000, 1000000000]'
+        when 'annuelle'  then '[1000000000, 2000000000, 3000000000, 5000000000]'
+        when 'totale'    then '[1500000000, 2000000000, 3000000000, 5000000000, 10000000000]'
+    end::jsonb,
+
+    -- Recompter tout de suite, sans attendre les vingt-quatre heures.
+    last_run_at = null
 from monitoring_probes p
 where p.id = w.probe_id
   and p.unit = 'F CFA'
