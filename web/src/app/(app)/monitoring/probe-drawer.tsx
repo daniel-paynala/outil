@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import { Play, Plus, Trash2 } from "lucide-react";
 
@@ -9,6 +9,7 @@ import { useToast } from "@/core/toast/toast-context";
 import type {
   Direction,
   MonitoredDatabase,
+  Personne,
   Probe,
   WindowMode,
 } from "@/lib/monitoring/types";
@@ -101,12 +102,35 @@ export default function ProbeDrawer({
       : FENETRES_PAR_DEFAUT,
   );
 
+  // `null` tant qu'on n'y a pas touché : le serveur laisse alors la liste
+  // intacte. Modifier des paliers ne doit pas rouvrir une sonde par omission.
+  const [viewers, setViewers] = useState<Personne[] | null>(
+    probe?.viewers?.length ? probe.viewers : null,
+  );
+  const [annuaire, setAnnuaire] = useState<Personne[]>([]);
+
   const [essai, setEssai] = useState<
     { ok: true; value: number } | { ok: false; error: string } | null
   >(null);
   const [enEssai, setEnEssai] = useState(false);
   const [envoi, setEnvoi] = useState(false);
   const [erreur, setErreur] = useState<string | null>(null);
+
+  // L'annuaire est chargé une fois à l'ouverture : l'équipe tient sur un
+  // écran, et un champ de recherche à distance ferait payer un aller-retour
+  // vers Francfort à chaque lettre pour choisir parmi cinq personnes.
+  useEffect(() => {
+    let vivant = true;
+
+    apiFetch("/api/users")
+      .then((r) => (r.ok ? r.json() : []))
+      .then((gens: Personne[]) => vivant && setAnnuaire(gens))
+      .catch(() => {});
+
+    return () => {
+      vivant = false;
+    };
+  }, []);
 
   /** « 3, 10, 20 » → [3, 10, 20], dédoublonné et croissant. */
   function paliers(texte: string): number[] {
@@ -168,6 +192,7 @@ export default function ProbeDrawer({
             title: titre.trim(),
             unit: unite.trim() || "événements",
             query: requete,
+            ...(viewers === null ? {} : { viewers: viewers.map((v) => v.id) }),
             windows: fenetres.map((f) => ({
               hours: f.hours,
               mode: f.mode,
@@ -515,6 +540,72 @@ export default function ProbeDrawer({
               l&apos;incident traité — une fenêtre vide de paliers observe sans
               jamais alerter.
             </p>
+          </div>
+
+          <div>
+            <div className="mb-1.5 flex items-center gap-3">
+              <span className="text-xs font-medium">Qui peut la voir</span>
+              {viewers !== null && (
+                <button
+                  type="button"
+                  onClick={() => setViewers(null)}
+                  className="text-xs text-[var(--color-brand-red)] hover:underline"
+                >
+                  rouvrir à tous
+                </button>
+              )}
+            </div>
+
+            {viewers === null ? (
+              <p className="text-xs text-[var(--muted)]">
+                Toute l&apos;équipe qui a le droit de superviser.{" "}
+                <button
+                  type="button"
+                  onClick={() => setViewers([])}
+                  className="text-[var(--color-brand-red)] hover:underline"
+                >
+                  Restreindre
+                </button>
+              </p>
+            ) : (
+              <>
+                <div className="flex flex-wrap gap-1.5">
+                  {annuaire.map((gens) => {
+                    const choisi = viewers.some((v) => v.id === gens.id);
+
+                    return (
+                      <button
+                        key={gens.id}
+                        type="button"
+                        aria-pressed={choisi}
+                        onClick={() =>
+                          setViewers((v) =>
+                            choisi
+                              ? (v ?? []).filter((x) => x.id !== gens.id)
+                              : [...(v ?? []), gens],
+                          )
+                        }
+                        className={`rounded-full border px-2.5 py-1 text-xs transition-colors ${
+                          choisi
+                            ? "border-[var(--color-brand-red)] bg-[var(--color-brand-red)]/10 text-[var(--color-brand-red)]"
+                            : "border-[var(--border)] text-[var(--muted)] hover:text-[var(--foreground)]"
+                        }`}
+                      >
+                        {gens.name ?? gens.email}
+                      </button>
+                    );
+                  })}
+                </div>
+
+                <p className="mt-1.5 text-xs text-[var(--muted)]">
+                  {viewers.length === 0
+                    ? "Personne de sélectionné : la sonde reste visible de tous. Une liste vide ne cache rien."
+                    : "Seules ces personnes la voient, et seules elles reçoivent ses alertes — une notification arrive sur un écran verrouillé, là où on ne contrôle plus rien."}{" "}
+                  Les administrateurs de la supervision la voient de toute façon
+                  : ils peuvent en modifier la requête et l&apos;exécuter.
+                </p>
+              </>
+            )}
           </div>
 
           {erreur && (

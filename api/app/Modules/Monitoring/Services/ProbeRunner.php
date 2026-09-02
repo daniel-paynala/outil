@@ -185,7 +185,7 @@ class ProbeRunner
         $corps = "{$valeur} {$sonde->unit} sur {$fenetre->hours} h "
             ."({$seuil} {$palier}).";
 
-        foreach ($this->destinataires() as $userId) {
+        foreach ($this->destinataires($sonde) as $userId) {
             $this->notify->forUser(
                 userId: $userId,
                 type: 'monitoring.alert',
@@ -203,25 +203,51 @@ class ProbeRunner
     }
 
     /**
-     * Qui reçoit les alertes.
+     * Qui reçoit les alertes de cette sonde.
      *
      * Les porteurs du droit de supervision, et les administrateurs qui l'ont
      * implicitement. La requête est refaite à chaque alerte : un droit retiré
      * ce matin ne doit pas continuer à recevoir des alertes cet après-midi.
      *
+     * ## La restriction s'applique ici aussi, et c'est le point important
+     *
+     * Une sonde restreinte qui notifierait tout le monde annoncerait son nom,
+     * son volume et son heure à des gens qui n'ont pas le droit de la voir —
+     * une porte fermée à côté d'une fenêtre ouverte. Pire : la notification
+     * arrive sur un écran verrouillé, donc là où on ne contrôle plus rien.
+     *
+     * Les administrateurs de la supervision restent destinataires : ils
+     * peuvent de toute façon lire la sonde, et une alerte qu'ils ne recevraient
+     * pas serait un incident que personne ne traite un jour de congé.
+     *
      * @return array<int, string>
      */
-    private function destinataires(): array
+    private function destinataires(MonitoringProbe $sonde): array
     {
-        $accordes = DB::table('user_capabilities')
-            ->whereIn('capability', [
-                Capability::Monitoring->value,
-                Capability::MonitoringAdmin->value,
-            ])
+        $administrateursSupervision = DB::table('user_capabilities')
+            ->where('capability', Capability::MonitoringAdmin->value)
+            ->pluck('user_id')
+            ->merge(User::where('role', 'admin')->pluck('id'))
+            ->unique();
+
+        $restreinte = DB::table('monitoring_probe_viewers')
+            ->where('probe_id', $sonde->id)
             ->pluck('user_id');
 
-        $administrateurs = User::where('role', 'admin')->pluck('id');
+        if ($restreinte->isNotEmpty()) {
+            return $restreinte
+                ->merge($administrateursSupervision)
+                ->unique()
+                ->values()
+                ->all();
+        }
 
-        return $accordes->merge($administrateurs)->unique()->values()->all();
+        return DB::table('user_capabilities')
+            ->where('capability', Capability::Monitoring->value)
+            ->pluck('user_id')
+            ->merge($administrateursSupervision)
+            ->unique()
+            ->values()
+            ->all();
     }
 }

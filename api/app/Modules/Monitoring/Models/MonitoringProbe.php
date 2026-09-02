@@ -3,9 +3,11 @@
 namespace App\Modules\Monitoring\Models;
 
 use App\Models\User;
+use App\Modules\Monitoring\Support\Capability;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
 /**
@@ -26,6 +28,57 @@ class MonitoringProbe extends Model
             'enabled' => 'boolean',
             'counting_from' => 'datetime',
         ];
+    }
+
+    /**
+     * Les personnes à qui cette sonde est restreinte.
+     *
+     * **Vide veut dire « tout le monde »**, pas « personne ». La restriction
+     * est une exception qu'on pose, jamais un réglage qu'on oublie : l'absence
+     * de ligne ne peut pas cacher une sonde par accident.
+     */
+    public function viewers(): BelongsToMany
+    {
+        return $this->belongsToMany(
+            User::class,
+            'monitoring_probe_viewers',
+            'probe_id',
+            'user_id',
+        )->withPivot(['granted_by', 'granted_at']);
+    }
+
+    public function isRestricted(): bool
+    {
+        return $this->relationLoaded('viewers')
+            ? $this->viewers->isNotEmpty()
+            : $this->viewers()->exists();
+    }
+
+    /**
+     * Cette personne peut-elle voir cette sonde ?
+     *
+     * Les porteurs de `monitoring.admin` voient tout. Ce n'est pas une faveur :
+     * ils peuvent modifier n'importe quelle sonde, y compris sa requête, et
+     * l'exécuter par le bouton « Essayer ». Leur masquer le résultat pendant
+     * qu'ils gardent le moyen de l'obtenir ne serait pas de la confidentialité,
+     * seulement une gêne — et une gêne qu'on croit être une protection est pire
+     * que pas de protection du tout.
+     *
+     * La restriction porte donc sur les membres à qui l'on a accordé la simple
+     * consultation.
+     */
+    public function isVisibleTo(User $user): bool
+    {
+        if ($user->can(Capability::MonitoringAdmin)) {
+            return true;
+        }
+
+        $restreinte = $this->relationLoaded('viewers')
+            ? $this->viewers
+            : $this->viewers()->get();
+
+        return $restreinte->isEmpty()
+            || $restreinte->contains(fn (User $u) => $u->id === $user->id);
     }
 
     public function database(): BelongsTo

@@ -78,6 +78,21 @@ return new class extends Migration
                 ->on('monitoring_probes')->cascadeOnDelete();
         });
 
+        Schema::create('monitoring_probe_viewers', function (Blueprint $table) {
+            $table->uuid('probe_id');
+            $table->uuid('user_id');
+            $table->uuid('granted_by')->nullable();
+            $table->timestamp('granted_at')->useCurrent();
+
+            $table->primary(['probe_id', 'user_id']);
+            $table->index('user_id');
+
+            $table->foreign('probe_id')
+                ->references('id')->on('monitoring_probes')->cascadeOnDelete();
+            $table->foreign('user_id')
+                ->references('id')->on('users')->cascadeOnDelete();
+        });
+
         Schema::create('monitoring_alerts', function (Blueprint $table) {
             $table->uuid('id')->primary();
             $table->uuid('probe_id');

@@ -12,6 +12,7 @@ import {
   AlertTriangle,
   Check,
   Database as DatabaseIcon,
+  Lock,
   Pencil,
   Plus,
   RefreshCw,
@@ -318,6 +319,17 @@ function ProbeCard({
             {!probe.enabled && (
               <span className="rounded bg-[var(--surface)] px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-[var(--muted)]">
                 en pause
+              </span>
+            )}
+            {(probe.viewers?.length ?? 0) > 0 && (
+              <span
+                title={`Restreinte à ${probe.viewers
+                  ?.map((v) => v.name ?? v.email)
+                  .join(", ")}`}
+                className="inline-flex items-center gap-1 rounded bg-[var(--surface)] px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-[var(--muted)]"
+              >
+                <Lock size={9} />
+                {probe.viewers?.length}
               </span>
             )}
           </div>

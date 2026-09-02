@@ -101,12 +101,22 @@ export type Probe = {
     MonitoredDatabase,
     "id" | "name" | "read_only_verified_at" | "last_error"
   >;
-  acknowledger?: {
-    id: string;
-    name: string | null;
-    email: string;
-    avatar_url?: string | null;
-  } | null;
+  acknowledger?: Personne | null;
+
+  /**
+   * Les personnes à qui la sonde est restreinte.
+   *
+   * **Vide veut dire « tout le monde »**, pas « personne ». La restriction est
+   * une exception qu'on pose, jamais un réglage qu'on oublie.
+   */
+  viewers?: Personne[];
+};
+
+export type Personne = {
+  id: string;
+  name: string | null;
+  email: string;
+  avatar_url?: string | null;
 };
 
 /** Ce que rend `GET /api/monitoring/probes`. */

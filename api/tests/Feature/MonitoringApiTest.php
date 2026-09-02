@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Modules\Monitoring\Models\MonitoredDatabase;
+use App\Modules\Monitoring\Models\MonitoringAlert;
 use App\Modules\Monitoring\Models\MonitoringProbe;
 use App\Modules\Monitoring\Models\MonitoringProbeWindow;
 use App\Modules\Monitoring\Services\DatabaseConnector;
@@ -500,5 +501,152 @@ class MonitoringApiTest extends TestCase
             'action' => 'monitoring.database.disabled',
             'subject_name' => 'Airtel Money',
         ]);
+    }
+
+    // ── Restreindre une sonde à certaines personnes ─────────────────────
+
+    /** Un membre à qui l'on a accordé la simple consultation. */
+    private function membre(): array
+    {
+        [$user, $entetes] = $this->authenticate();
+        $this->accorder($user->id, Capability::Monitoring);
+
+        return [$user, $entetes];
+    }
+
+    public function test_sans_restriction_une_sonde_est_visible_de_tous(): void
+    {
+        // Le défaut, et il compte : l'absence de ligne ne peut pas cacher une
+        // sonde par accident.
+        [, $entetes] = $this->membre();
+        $this->sonde($this->base());
+
+        $this->getJson('/api/monitoring/probes', $entetes)
+            ->assertOk()
+            ->assertJsonCount(1, 'probes');
+    }
+
+    public function test_une_sonde_restreinte_disparait_pour_les_autres(): void
+    {
+        [$autorise] = $this->membre();
+        [, $entetes] = $this->membre();
+        $sonde = $this->sonde($this->base());
+        $sonde->viewers()->sync([$autorise->id]);
+
+        $this->getJson('/api/monitoring/probes', $entetes)
+            ->assertOk()
+            ->assertJsonCount(0, 'probes');
+    }
+
+    public function test_la_personne_autorisee_la_voit(): void
+    {
+        [$autorise, $entetes] = $this->membre();
+        $sonde = $this->sonde($this->base());
+        $sonde->viewers()->sync([$autorise->id]);
+
+        $this->getJson('/api/monitoring/probes', $entetes)
+            ->assertOk()
+            ->assertJsonCount(1, 'probes');
+    }
+
+    public function test_un_administrateur_de_la_supervision_voit_tout(): void
+    {
+        // Ce n'est pas une faveur : il peut modifier la requête et l'exécuter
+        // par le bouton « Essayer ». Lui masquer le résultat pendant qu'il
+        // garde le moyen de l'obtenir ne serait pas de la confidentialité.
+        [$autre] = $this->membre();
+        [$user, $entetes] = $this->authenticate();
+        $this->accorder($user->id, Capability::MonitoringAdmin);
+
+        $sonde = $this->sonde($this->base());
+        $sonde->viewers()->sync([$autre->id]);
+
+        $this->getJson('/api/monitoring/probes', $entetes)
+            ->assertOk()
+            ->assertJsonCount(1, 'probes');
+    }
+
+    public function test_l_historique_ne_divulgue_pas_les_sondes_masquees(): void
+    {
+        // Sans ce filtre, l'historique dirait le nom, le volume et l'heure de
+        // ce que la liste masque — une porte fermée à côté d'une fenêtre
+        // ouverte.
+        [$autorise] = $this->membre();
+        [, $entetes] = $this->membre();
+        $sonde = $this->sonde($this->base());
+        $sonde->viewers()->sync([$autorise->id]);
+
+        MonitoringAlert::create([
+            'id' => (string) Str::uuid(),
+            'probe_id' => $sonde->id,
+            'window_hours' => 24,
+            'tier' => 10,
+            'value' => 12,
+            'raised_at' => now(),
+        ]);
+
+        $this->getJson('/api/monitoring/alerts', $entetes)
+            ->assertOk()
+            ->assertJsonCount(0);
+    }
+
+    public function test_acquitter_une_sonde_masquee_rend_404(): void
+    {
+        // 404 et non 403 : dire « interdit » confirmerait que cette sonde
+        // existe, et son identifiant se devine en essayant.
+        [$autorise] = $this->membre();
+        [, $entetes] = $this->membre();
+        $sonde = $this->sonde($this->base());
+        $sonde->viewers()->sync([$autorise->id]);
+
+        $this->postJson(
+            "/api/monitoring/probes/{$sonde->id}/acknowledge",
+            [],
+            $entetes,
+        )->assertNotFound();
+
+        $this->assertNull($sonde->fresh()->counting_from);
+    }
+
+    public function test_modifier_les_paliers_n_ouvre_pas_l_acces(): void
+    {
+        // `viewers` absent de la requête laisse la liste intacte. Sinon un
+        // simple réglage de paliers rouvrirait la sonde à tout le monde, en
+        // silence.
+        [$autorise] = $this->membre();
+        [$admin, $entetes] = $this->authenticate();
+        $this->accorder($admin->id, Capability::MonitoringAdmin);
+
+        $sonde = $this->sonde($this->base());
+        $sonde->viewers()->sync([$autorise->id]);
+
+        $this->patchJson("/api/monitoring/probes/{$sonde->id}", [
+            'database_id' => $sonde->database_id,
+            'title' => 'Time-outs',
+            'query' => 'select count(*) as valeur from payment',
+            'windows' => [['hours' => 24, 'tiers' => [5]]],
+        ], $entetes)->assertOk();
+
+        $this->assertSame([$autorise->id], $sonde->viewers()->pluck('users.id')->all());
+    }
+
+    public function test_une_liste_vide_rouvre_la_sonde(): void
+    {
+        [$autorise] = $this->membre();
+        [$admin, $entetes] = $this->authenticate();
+        $this->accorder($admin->id, Capability::MonitoringAdmin);
+
+        $sonde = $this->sonde($this->base());
+        $sonde->viewers()->sync([$autorise->id]);
+
+        $this->patchJson("/api/monitoring/probes/{$sonde->id}", [
+            'database_id' => $sonde->database_id,
+            'title' => 'Time-outs',
+            'query' => 'select count(*) as valeur from payment',
+            'windows' => [['hours' => 24, 'tiers' => [5]]],
+            'viewers' => [],
+        ], $entetes)->assertOk();
+
+        $this->assertSame([], $sonde->viewers()->pluck('users.id')->all());
     }
 }

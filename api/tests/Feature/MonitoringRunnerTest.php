@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Models\User;
 use App\Modules\Monitoring\Models\MonitoredDatabase;
 use App\Modules\Monitoring\Models\MonitoringAlert;
 use App\Modules\Monitoring\Models\MonitoringProbe;
@@ -485,5 +486,93 @@ class MonitoringRunnerTest extends TestCase
         $this->assertSame(20, Tiers::next(45, $paliers, Direction::Decroissant));
         $this->assertNull(Tiers::next(140, $paliers, Direction::Croissant));
         $this->assertNull(Tiers::next(3, $paliers, Direction::Decroissant));
+    }
+
+    // ── Une sonde restreinte ne notifie pas les autres ──────────────────
+
+    private function avecDroit(Capability $droit): User
+    {
+        [$user] = $this->authenticate();
+        DB::table('user_capabilities')->insert([
+            'user_id' => $user->id,
+            'capability' => $droit->value,
+            'granted_at' => now(),
+        ]);
+
+        return $user;
+    }
+
+    private function prevenus(): array
+    {
+        return DB::table('notifications')
+            ->where('type', 'monitoring.alert')
+            ->pluck('user_id')
+            ->sort()
+            ->values()
+            ->all();
+    }
+
+    public function test_sans_restriction_tous_les_superviseurs_sont_prevenus(): void
+    {
+        $a = $this->avecDroit(Capability::Monitoring);
+        $b = $this->avecDroit(Capability::Monitoring);
+
+        $this->tourner(5);
+
+        $this->assertEqualsCanonicalizing([$a->id, $b->id], $this->prevenus());
+    }
+
+    public function test_une_sonde_restreinte_ne_notifie_que_les_siens(): void
+    {
+        // Le point le plus important de toute la restriction. Une notification
+        // arrive sur un écran verrouillé — là où on ne contrôle plus rien — et
+        // porte le nom de la base, le volume et l'heure. La laisser partir à
+        // tout le monde annulerait la restriction tout en donnant l'illusion
+        // qu'elle existe.
+        $autorise = $this->avecDroit(Capability::Monitoring);
+        $exclu = $this->avecDroit(Capability::Monitoring);
+        $this->sonde->viewers()->sync([$autorise->id]);
+
+        $this->tourner(5);
+
+        $this->assertSame([$autorise->id], $this->prevenus());
+        $this->assertNotContains($exclu->id, $this->prevenus());
+    }
+
+    public function test_un_administrateur_de_la_supervision_reste_prevenu(): void
+    {
+        // Il peut de toute façon lire la sonde, et une alerte qu'il ne
+        // recevrait pas serait un incident que personne ne traite un jour de
+        // congé.
+        $autorise = $this->avecDroit(Capability::Monitoring);
+        $patron = $this->avecDroit(Capability::MonitoringAdmin);
+        $this->sonde->viewers()->sync([$autorise->id]);
+
+        $this->tourner(5);
+
+        $this->assertEqualsCanonicalizing(
+            [$autorise->id, $patron->id],
+            $this->prevenus(),
+        );
+    }
+
+    public function test_retirer_quelqu_un_de_la_liste_le_coupe_tout_de_suite(): void
+    {
+        // La liste est relue à chaque alerte : un accès retiré ce matin ne doit
+        // pas continuer à faire sonner un téléphone cet après-midi.
+        $a = $this->avecDroit(Capability::Monitoring);
+        $b = $this->avecDroit(Capability::Monitoring);
+        $this->sonde->viewers()->sync([$a->id, $b->id]);
+
+        $this->tourner(5);
+        $this->assertCount(2, $this->prevenus());
+
+        DB::table('notifications')->delete();
+        $this->sonde->viewers()->sync([$a->id]);
+        $this->fenetre->update(['severest_tier' => 0]);
+
+        $this->tourner(15);
+
+        $this->assertSame([$a->id], $this->prevenus());
     }
 }
