@@ -32,6 +32,7 @@ import {
   type Level,
   hasIncident,
   nextTier,
+  periodLabel,
   seuilLabel,
   severity,
   type MonitoredDatabase,
@@ -40,6 +41,7 @@ import {
   type ProbeWindow,
 } from "@/lib/monitoring/types";
 
+import { INFOBULLE_MODE } from "./modes";
 import DatabaseDrawer from "./database-drawer";
 import ProbeDrawer from "./probe-drawer";
 
@@ -416,15 +418,10 @@ function WindowCell({
     <div className="bg-[var(--background)] px-4 py-3">
       <p
         className="flex items-center gap-2 text-[11px] uppercase tracking-wider text-[var(--muted)]"
-        title={
-          fenetre.mode === "calendaire"
-            ? "Depuis minuit, heure de Libreville"
-            : "Les dernières heures, à tout instant"
-        }
+        title={INFOBULLE_MODE[fenetre.mode ?? "glissante"]}
       >
         <Pastille level={niveau} />
-        {fenetre.hours} h{" "}
-        {fenetre.mode === "calendaire" ? "calendaires" : "glissantes"}
+        {periodLabel(fenetre)}
       </p>
       <p className="mt-1 flex items-baseline gap-1.5">
         <span

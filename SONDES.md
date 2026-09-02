@@ -1,6 +1,6 @@
 # Les erreurs de Paynala — une requête indépendante par type
 
-Dix-neuf fichiers dans [`sondes/`](sondes/). **Chacun est autonome** : une
+Vingt fichiers dans [`sondes/`](sondes/). **Chacun est autonome** : une
 requête complète, sans vue à créer, sans socle partagé, sans dépendance aux
 autres. Tu en colles une dans le champ « Requête » d'une sonde Arche, elle
 marche seule.
@@ -121,8 +121,48 @@ where created_at >= :depuis
 |---|---|---|
 | 14 | `14-paiements-en-echec.sql` | Paiements en statut `FAILED` |
 | 15 | `15-silence-production.sql` | Minutes depuis le dernier paiement |
-| 17 | `17-paiements-reussis.sql` | Paiements en statut `SUCCESS` |
 | 16 | `16-decouverte-des-libelles.sql` | *Pas une sonde* — voir plus bas |
+
+### L'argent collecté
+
+Même requête, quatre fenêtres. Elle additionne les montants crédités sur les
+trois portefeuilles — le montant d'une jambe vit dans
+`request->'transaction'->>'amount'`, exactement d'où le tableau de bord le tire
+pour ses rapports de bénéficiaires. Les trois s'additionnent : ce sont trois
+portefeuilles distincts, pas trois vues du même montant.
+
+| # | Fichier | Fenêtre | Sens |
+|---|---|---|---|
+| 17 | `17-montant-collecte-total.sql` | depuis toujours | croissant |
+| 18 | `18-montant-collecte-annee.sql` | cette année | croissant |
+| 19 | `19-montant-collecte-mois.sql` | ce mois-ci | croissant |
+| 20 | `20-montant-collecte-1h.sql` | 1 h glissante | **décroissant** |
+
+```sql
+select cast(
+    coalesce(sum(cast(request->'transaction'->>'amount' as numeric)), 0)
+    as bigint
+) as valeur
+from airtel_logs
+where created_at >= :depuis
+  and request_id ~ '(CP|MC|MC1|MC2)$'
+  and response->'status'->>'success' = 'true'
+```
+
+**Pourquoi les trois premières sont croissantes.** Un cumul depuis le 1er du
+mois est forcément bas le 2. Un plancher mensuel sonnerait donc tous les
+débuts de mois sans qu'il se soit rien passé, et tous les débuts d'année pour
+la sonde annuelle. Leurs paliers sont des jalons qu'on franchit une fois —
+100 M, 500 M, 1 Md — et c'est une nouvelle qu'on veut recevoir, pas une alarme.
+
+**La 20 est celle qui alerte vraiment.** Sur une heure glissante, un montant
+qui tombe sous le plancher habituel signale un incident tout de suite, sans
+attendre la fin du mois. Ses planchers dépendent du volume réel : à régler
+après observation, comme la sonde 15.
+
+**Une sonde par période, et non une sonde à quatre fenêtres.** L'acquittement
+est porté par la sonde, pas par la fenêtre : accuser réception d'un creux
+horaire remettrait aussi à zéro le comptage du mois.
 
 ### La sonde 17 ne mesure pas une panne, et ça change tout
 
@@ -375,7 +415,10 @@ sur 24 h* ne se lit pas.
 | 13 | `refus métier inconnus` | `3, 10, 30, 100` | `10, 100` | À 3 : au-delà, ce n'est plus un cas isolé mais un libellé nouveau qui mérite sa propre sonde. |
 | 14 | `paiements en échec` | `10, 50, 100, 250, 500` | `50, 250` | Un volume d'échecs est normal ; on guette le décrochage. |
 | 15 | `minutes sans paiement` | `30, 60, 180, 360` | — | **À régler après observation** — voir ci-dessous. |
-| 17 | `paiements réussis` | `100` | — | Le seuil que tu as demandé. Une seule notification tant qu'elle n'est pas acquittée — voir la note plus haut. |
+| 17 | `F CFA` | jalons | — | Depuis toujours. `100000000, 500000000, 1000000000` : des jalons, pas une alarme. |
+| 18 | `F CFA` | jalons | — | Cette année. Mêmes jalons, à l'échelle de l'exercice. |
+| 19 | `F CFA` | jalons | — | Ce mois-ci. |
+| 20 | `F CFA` | **à observer** | — | 1 h glissante, décroissant. Le seul de ces quatre qui prévienne d'un effondrement. |
 
 ### La sonde 15 mérite son propre paragraphe
 

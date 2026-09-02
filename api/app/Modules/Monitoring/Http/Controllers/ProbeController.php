@@ -268,7 +268,10 @@ class ProbeController extends Controller
             // jamais et resterait à l'écran comme si elle veillait.
             'windows' => ['required', 'array', 'min:1', 'max:4'],
             'windows.*.hours' => ['required', 'integer', 'between:1,720'],
-            'windows.*.mode' => ['sometimes', 'in:glissante,calendaire'],
+            'windows.*.mode' => [
+                'sometimes',
+                'in:glissante,calendaire,mensuelle,annuelle,totale',
+            ],
             'windows.*.direction' => ['sometimes', 'in:croissant,decroissant'],
             'windows.*.tiers' => ['present', 'array', 'max:12'],
             'windows.*.tiers.*' => ['integer', 'min:1'],

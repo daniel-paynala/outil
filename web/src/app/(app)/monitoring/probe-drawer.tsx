@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { Play, Plus, Trash2 } from "lucide-react";
 
 import { apiFetch } from "@/lib/api/client";
+import { ignoresHours } from "@/lib/monitoring/types";
 import { useToast } from "@/core/toast/toast-context";
 import type {
   Direction,
@@ -15,6 +16,7 @@ import type {
 } from "@/lib/monitoring/types";
 
 import Drawer from "./drawer";
+import { INFOBULLE_MODE } from "./modes";
 
 /** Une fenêtre en cours de saisie — les paliers restent du texte tant qu'on tape. */
 type WindowDraft = {
@@ -435,7 +437,13 @@ export default function ProbeDrawer({
                           }),
                         )
                       }
-                      className={`${inputClass} tabular-nums`}
+                      disabled={ignoresHours(fenetre.mode)}
+                      title={
+                        ignoresHours(fenetre.mode)
+                          ? "Sans effet : la période est fixée par le découpage"
+                          : undefined
+                      }
+                      className={`${inputClass} tabular-nums disabled:opacity-40`}
                     />
                     <span className="text-xs text-[var(--muted)]">h</span>
                   </div>
@@ -453,20 +461,19 @@ export default function ProbeDrawer({
                           ),
                         )
                       }
-                      title={
-                        fenetre.mode === "glissante"
-                          ? "Les dernières heures, à tout instant"
-                          : "Depuis minuit, heure de Libreville"
-                      }
+                      title={INFOBULLE_MODE[fenetre.mode]}
                       className={inputClass}
                     >
-                      <option value="glissante">glissantes</option>
+                      <option value="glissante">glissante</option>
                       <option
                         value="calendaire"
                         disabled={fenetre.hours % 24 !== 0}
                       >
-                        calendaires
+                        calendaire
                       </option>
+                      <option value="mensuelle">ce mois-ci</option>
+                      <option value="annuelle">cette année</option>
+                      <option value="totale">depuis toujours</option>
                     </select>
                   </div>
 

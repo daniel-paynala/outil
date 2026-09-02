@@ -44,7 +44,36 @@ export type MonitoredDatabase = {
  * La première détecte mieux, la seconde se décide mieux. D'où un choix par
  * fenêtre plutôt qu'un arbitrage imposé.
  */
-export type WindowMode = "glissante" | "calendaire";
+export type WindowMode =
+  "glissante" | "calendaire" | "mensuelle" | "annuelle" | "totale";
+
+/** Les modes dont la durée en heures ne veut rien dire. */
+export function ignoresHours(mode: WindowMode | undefined): boolean {
+  return mode === "mensuelle" || mode === "annuelle" || mode === "totale";
+}
+
+/**
+ * La période, telle qu'elle se dit.
+ *
+ * « sur 24 h » ne veut rien dire d'une fenêtre mensuelle, et « sur 720 h »
+ * encore moins : un mois n'a pas une durée fixe.
+ */
+export function periodLabel(w: ProbeWindow): string {
+  switch (w.mode) {
+    case "totale":
+      return "depuis toujours";
+    case "annuelle":
+      return "cette année";
+    case "mensuelle":
+      return "ce mois-ci";
+    case "calendaire":
+      return w.hours <= 24
+        ? "aujourd'hui"
+        : `sur ${Math.floor(w.hours / 24)} jours`;
+    default:
+      return `${w.hours} h glissantes`;
+  }
+}
 
 /**
  * Dans quel sens la fenêtre se dégrade.

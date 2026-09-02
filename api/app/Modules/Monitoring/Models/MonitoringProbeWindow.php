@@ -55,6 +55,31 @@ class MonitoringProbeWindow extends Model
         return $this->mode === 'calendaire';
     }
 
+    /**
+     * La période, telle qu'elle se dit dans une notification.
+     *
+     * « sur 24 h » ne veut rien dire d'une fenêtre mensuelle, et « sur 720 h »
+     * encore moins : un mois n'a pas une durée fixe.
+     */
+    public function periodLabel(): string
+    {
+        return match ($this->mode) {
+            'mensuelle' => 'ce mois-ci',
+            'annuelle' => 'cette année',
+            'totale' => 'depuis toujours',
+            'calendaire' => $this->hours <= 24
+                ? "aujourd'hui"
+                : 'sur '.intdiv($this->hours, 24).' jours',
+            default => "sur {$this->hours} h",
+        };
+    }
+
+    /** Les modes dont la durée en heures ne veut rien dire. */
+    public function ignoresHours(): bool
+    {
+        return in_array($this->mode, ['mensuelle', 'annuelle', 'totale'], true);
+    }
+
     protected function casts(): array
     {
         return [

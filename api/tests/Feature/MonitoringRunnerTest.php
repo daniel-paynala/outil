@@ -575,4 +575,123 @@ class MonitoringRunnerTest extends TestCase
 
         $this->assertSame([$a->id], $this->prevenus());
     }
+
+    // ── Le mois, et le cumul de toujours ────────────────────────────────
+
+    public function test_une_fenetre_mensuelle_part_du_premier_du_mois(): void
+    {
+        // Un mois n'a pas une durée fixe : 720 heures ne sont pas février, et
+        // aucun nombre d'heures ne dit « depuis le 1er ».
+        config(['monitoring.timezone' => 'Africa/Libreville']);
+        $this->fenetre->update(['mode' => 'mensuelle']);
+        $this->travelTo('2026-09-17 15:13:00');
+
+        $this->tourner(1);
+
+        // 1er septembre à minuit à Libreville, soit le 31 août 23 h UTC.
+        $this->assertSame('2026-08-31 23:00:00', $this->dernierDepuis);
+    }
+
+    public function test_le_mois_suit_le_calendrier_et_non_trente_jours(): void
+    {
+        // Le 1er mars, une fenêtre de « 30 jours » remonterait au 30 janvier.
+        config(['monitoring.timezone' => 'Africa/Libreville']);
+        $this->fenetre->update(['mode' => 'mensuelle']);
+        $this->travelTo('2026-03-01 08:00:00');
+
+        $this->tourner(1);
+
+        $this->assertSame('2026-02-28 23:00:00', $this->dernierDepuis);
+    }
+
+    public function test_acquitter_deplace_bien_les_autres_fenetres(): void
+    {
+        // Le mensuel garde le comportement de tous les autres modes.
+        config(['monitoring.timezone' => 'Africa/Libreville']);
+        $this->fenetre->update(['mode' => 'mensuelle']);
+        $this->sonde->update(['counting_from' => '2026-09-10 10:00:00']);
+        $this->travelTo('2026-09-17 15:13:00');
+
+        $this->tourner(1);
+
+        $this->assertSame('2026-09-10 10:00:00', $this->dernierDepuis);
+    }
+
+    public function test_la_notification_nomme_la_periode_et_espace_les_montants(): void
+    {
+        // « 45000000 F CFA sur 720 h » ne se lit pas sur un écran verrouillé.
+        $this->sonde->update(['unit' => 'F CFA']);
+        $this->fenetre->update([
+            'mode' => 'mensuelle',
+            'direction' => 'decroissant',
+            'tiers' => [50000000],
+        ]);
+        [$user] = $this->authenticate();
+        DB::table('user_capabilities')->insert([
+            'user_id' => $user->id,
+            'capability' => Capability::Monitoring->value,
+            'granted_at' => now(),
+        ]);
+
+        $this->tourner(45000000);
+
+        $corps = DB::table('notifications')
+            ->where('type', 'monitoring.alert')
+            ->value('body');
+
+        $this->assertSame(
+            '45 000 000 F CFA ce mois-ci (plancher 50 000 000).',
+            $corps,
+        );
+    }
+
+    public function test_une_fenetre_annuelle_part_du_premier_janvier(): void
+    {
+        // Inexprimable en heures : une fenêtre plafonne à 720 heures, une
+        // année en compte 8 760.
+        config(['monitoring.timezone' => 'Africa/Libreville']);
+        $this->fenetre->update(['mode' => 'annuelle']);
+        $this->travelTo('2026-09-17 15:13:00');
+
+        $this->tourner(1);
+
+        $this->assertSame('2025-12-31 23:00:00', $this->dernierDepuis);
+    }
+
+    public function test_le_mois_et_l_annee_ignorent_les_heures(): void
+    {
+        // La colonne reste renseignée — elle est obligatoire — mais ne décide
+        // plus rien. L'écran doit donc afficher la période, pas la durée.
+        $this->fenetre->update(['mode' => 'mensuelle', 'hours' => 6]);
+        $this->assertTrue($this->fenetre->fresh()->ignoresHours());
+        $this->assertSame('ce mois-ci', $this->fenetre->fresh()->periodLabel());
+
+        $this->fenetre->update(['mode' => 'annuelle']);
+        $this->assertSame('cette année', $this->fenetre->fresh()->periodLabel());
+    }
+
+    public function test_une_fenetre_totale_remonte_avant_la_production(): void
+    {
+        $this->fenetre->update(['mode' => 'totale']);
+        $this->travelTo('2026-09-17 15:13:00');
+
+        $this->tourner(1);
+
+        $this->assertSame('1970-01-01 00:00:00', $this->dernierDepuis);
+    }
+
+    public function test_acquitter_ne_deplace_pas_un_cumul_de_toujours(): void
+    {
+        // La seule fenêtre où l'acquittement n'agit pas sur la valeur : un
+        // cumul qui repartirait de zéro à chaque accusé de réception ne
+        // mesurerait plus rien. Il rouvre en revanche les paliers, pour que le
+        // jalon suivant se signale.
+        $this->fenetre->update(['mode' => 'totale']);
+        $this->sonde->update(['counting_from' => '2026-09-01 10:00:00']);
+        $this->travelTo('2026-09-17 15:13:00');
+
+        $this->tourner(1);
+
+        $this->assertSame('1970-01-01 00:00:00', $this->dernierDepuis);
+    }
 }

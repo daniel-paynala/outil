@@ -107,6 +107,16 @@ class ProbeRunner
         MonitoringProbeWindow $fenetre,
     ): Carbon {
         $debutFenetre = $this->windowStart($fenetre);
+
+        // « Depuis toujours » ne se déplace pas. Acquitter un jalon rouvre ses
+        // paliers — « oui, j'ai vu les cent millions » — mais ne peut pas
+        // effacer l'historique : un cumul qui repartirait de zéro à chaque
+        // accusé de réception ne mesurerait plus rien. C'est la seule fenêtre
+        // où l'acquittement n'agit pas sur la valeur.
+        if ($fenetre->mode === 'totale') {
+            return $debutFenetre;
+        }
+
         $acquittement = $sonde->counting_from;
 
         return $acquittement !== null && $acquittement->greaterThan($debutFenetre)
@@ -138,17 +148,28 @@ class ProbeRunner
      */
     private function windowStart(MonitoringProbeWindow $fenetre): Carbon
     {
-        if (! $fenetre->isCalendar()) {
-            return now()->subHours($fenetre->hours);
-        }
+        $ici = fn () => now()->timezone(config('monitoring.timezone'));
 
-        $jours = intdiv($fenetre->hours, 24);
+        return match ($fenetre->mode) {
+            // Depuis le 1er du mois, et depuis le 1er janvier. Le mécanisme
+            // des heures ne pouvait exprimer ni l'un ni l'autre : un mois n'a
+            // pas une durée fixe — 720 heures ne sont pas février — et une
+            // année dépasse de loin le plafond de 720 heures d'une fenêtre.
+            'mensuelle' => $ici()->startOfMonth()->utc(),
+            'annuelle' => $ici()->startOfYear()->utc(),
 
-        return now()
-            ->timezone(config('monitoring.timezone'))
-            ->startOfDay()
-            ->subDays(max($jours - 1, 0))
-            ->utc();
+            // Depuis toujours. Une date que la production ne peut pas
+            // précéder, plutôt qu'un `null` que chaque requête devrait savoir
+            // interpréter.
+            'totale' => Carbon::create(1970, 1, 1)->utc(),
+
+            'calendaire' => $ici()
+                ->startOfDay()
+                ->subDays(max(intdiv($fenetre->hours, 24) - 1, 0))
+                ->utc(),
+
+            default => now()->subHours($fenetre->hours),
+        };
     }
 
     /**
@@ -182,8 +203,14 @@ class ProbeRunner
         // « palier 50 » à quelqu'un dont la production vient de s'effondrer, et
         // il comprendrait l'inverse.
         $seuil = $fenetre->direction()->label();
-        $corps = "{$valeur} {$sonde->unit} sur {$fenetre->hours} h "
-            ."({$seuil} {$palier}).";
+
+        // Les montants se comptent en millions de francs. « 45000000 » ne se
+        // lit pas sur un écran verrouillé ; « 45 000 000 » se lit.
+        $lisible = number_format($valeur, 0, ',', ' ');
+        $seuilLisible = number_format($palier, 0, ',', ' ');
+
+        $corps = "{$lisible} {$sonde->unit} {$fenetre->periodLabel()} "
+            ."({$seuil} {$seuilLisible}).";
 
         foreach ($this->destinataires($sonde) as $userId) {
             $this->notify->forUser(
