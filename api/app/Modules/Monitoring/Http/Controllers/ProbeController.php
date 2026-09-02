@@ -75,6 +75,8 @@ class ProbeController extends Controller
             'title' => $data['title'],
             'unit' => $data['unit'] ?? 'événements',
             'query' => $data['query'],
+            'timeout_ms' => $data['timeout_ms'] ?? 8000,
+            'interval_minutes' => $data['interval_minutes'] ?? 1,
             'created_by' => $this->userId($request),
         ]);
 
@@ -106,6 +108,8 @@ class ProbeController extends Controller
             'title' => $data['title'],
             'unit' => $data['unit'] ?? $probe->unit,
             'query' => $data['query'],
+            'timeout_ms' => $data['timeout_ms'] ?? $probe->timeout_ms,
+            'interval_minutes' => $data['interval_minutes'] ?? $probe->interval_minutes,
         ]);
 
         // Les fenêtres sont remplacées, pas fusionnées : changer les paliers
@@ -162,7 +166,15 @@ class ProbeController extends Controller
         $data = $request->validate([
             'database_id' => ['required', 'uuid', 'exists:monitored_databases,id'],
             'query' => ['required', 'string', 'max:4000'],
+
+            // Huit secondes suffisent à compter sur une table indexée ; une
+            // requête qui croise des centaines de milliers de lignes de
+            // journal en demande davantage. Plafonné à soixante : au-delà, une
+            // sonde n'est plus une sonde, c'est un rapport.
+            'timeout_ms' => ['sometimes', 'integer', 'between:1000,60000'],
+            'interval_minutes' => ['sometimes', 'integer', 'between:1,1440'],
             'hours' => ['sometimes', 'integer', 'between:1,720'],
+            'timeout_ms' => ['sometimes', 'integer', 'between:1000,60000'],
         ]);
 
         $base = MonitoredDatabase::findOrFail($data['database_id']);
@@ -174,9 +186,12 @@ class ProbeController extends Controller
         }
 
         try {
-            $valeur = $this->connector->readValue($base, $data['query'], [
-                'depuis' => now()->subHours($data['hours'] ?? 24)->toDateTimeString(),
-            ]);
+            $lu = $this->connector->read(
+                $base,
+                $data['query'],
+                ['depuis' => now()->subHours($data['hours'] ?? 24)->toDateTimeString()],
+                $data['timeout_ms'] ?? null,
+            );
         } catch (Throwable $e) {
             return response()->json([
                 'ok' => false,
@@ -184,7 +199,11 @@ class ProbeController extends Controller
             ], 422);
         }
 
-        return response()->json(['ok' => true, 'value' => $valeur]);
+        return response()->json([
+            'ok' => true,
+            'value' => $lu['valeur'],
+            'detail' => $lu['detail'],
+        ]);
     }
 
     /**
@@ -241,7 +260,12 @@ class ProbeController extends Controller
         // Sans ce filtre, l'historique dirait le nom, le volume et l'heure de
         // ce que la liste masque — une porte fermée à côté d'une fenêtre
         // ouverte.
-        $visibles = MonitoringProbe::with('viewers:id')
+        //
+        // `select id` et non le modèle entier : on ne veut que des
+        // identifiants, et charger cent sondes complètes pour n'en garder que
+        // la clé se paie sur une connexion qui traverse l'Europe.
+        $visibles = MonitoringProbe::select('id')
+            ->with('viewers:id')
             ->get()
             ->filter(fn (MonitoringProbe $s) => $s->isVisibleTo($moi))
             ->pluck('id');

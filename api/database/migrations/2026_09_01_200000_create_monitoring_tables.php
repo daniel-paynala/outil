@@ -53,6 +53,9 @@ return new class extends Migration
                 ->nullOnDelete();
             $table->foreign('acknowledged_by')->references('id')->on('users')
                 ->nullOnDelete();
+            $table->text('last_error')->nullable();
+            $table->integer('timeout_ms')->default(8000);
+            $table->integer('interval_minutes')->default(1);
         });
 
         Schema::create('monitoring_probe_windows', function (Blueprint $table) {
@@ -63,6 +66,7 @@ return new class extends Migration
             // 'glissante' — les N dernières heures, à tout instant.
             // 'calendaire' — depuis minuit, heure de Libreville.
             $table->string('mode', 16)->default('glissante');
+            $table->jsonb('last_detail')->nullable();
 
             // 'croissant' — le danger est en haut (des erreurs qui grimpent).
             // 'decroissant' — le danger est en bas (une santé qui s'effondre).

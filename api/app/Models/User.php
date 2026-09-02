@@ -113,7 +113,30 @@ class User extends Model
      *
      * @return array<int, string>
      */
+    /**
+     * Mémorisé pour la durée de la requête HTTP.
+     *
+     * `isVisibleTo()` est appelé une fois par sonde, et chaque appel
+     * interrogeait `user_capabilities`. Vingt sondes faisaient vingt
+     * allers-retours vers Francfort pour une réponse qui ne peut pas changer
+     * entre le début et la fin d'un même affichage.
+     *
+     * L'instantané ne survit pas à la requête : accorder un droit crée une
+     * nouvelle instance au prochain appel, et le contrôleur qui les modifie
+     * écrit directement en base sans passer par ici.
+     */
+    private ?array $capabilitiesCache = null;
+
     public function capabilities(): array
+    {
+        if ($this->capabilitiesCache !== null) {
+            return $this->capabilitiesCache;
+        }
+
+        return $this->capabilitiesCache = $this->computeCapabilities();
+    }
+
+    private function computeCapabilities(): array
     {
         if ($this->isAdmin()) {
             return array_map(fn (Capability $c) => $c->value, Capability::cases());

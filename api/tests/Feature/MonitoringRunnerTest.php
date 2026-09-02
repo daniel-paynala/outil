@@ -68,14 +68,19 @@ class MonitoringRunnerTest extends TestCase
         {
             public function __construct(private $test) {}
 
-            public function readValue(
+            public function read(
                 MonitoredDatabase $base,
                 string $sql,
                 array $bindings = [],
-            ): int {
+                ?int $timeoutMs = null,
+            ): array {
                 $this->test->dernierDepuis = $bindings['depuis'] ?? null;
+                $this->test->dernierTimeout = $timeoutMs;
 
-                return $this->test->prochaineValeur();
+                return [
+                    'valeur' => $this->test->prochaineValeur(),
+                    'detail' => $this->test->detail,
+                ];
             }
         };
 
@@ -84,6 +89,12 @@ class MonitoringRunnerTest extends TestCase
 
     /** Le `:depuis` envoyé à la dernière exécution — voir les tests de fenêtre. */
     public ?string $dernierDepuis = null;
+
+    /** Le plafond transmis au connecteur à la dernière exécution. */
+    public ?int $dernierTimeout = null;
+
+    /** Ce que la fausse requête rendra en plus de `valeur`. */
+    public array $detail = [];
 
     public function prochaineValeur(): int
     {
@@ -693,5 +704,154 @@ class MonitoringRunnerTest extends TestCase
         $this->tourner(1);
 
         $this->assertSame('1970-01-01 00:00:00', $this->dernierDepuis);
+    }
+
+    // ── Cadence, délai, détail ──────────────────────────────────────────
+
+    public function test_le_delai_de_la_sonde_est_transmis_a_postgres(): void
+    {
+        // Huit secondes suffisent à compter sur une table indexée. Croiser des
+        // centaines de milliers de lignes de journal en demande davantage : le
+        // tableau de bord Paynala accorde 45 s aux mêmes requêtes.
+        $this->sonde->update(['timeout_ms' => 45000]);
+
+        $this->tourner(1);
+
+        $this->assertSame(45000, $this->dernierTimeout);
+    }
+
+    public function test_le_delai_par_defaut_reste_de_huit_secondes(): void
+    {
+        $this->tourner(1);
+
+        $this->assertSame(8000, $this->dernierTimeout);
+    }
+
+    public function test_une_sonde_a_cadence_lente_ne_tourne_pas_a_chaque_minute(): void
+    {
+        // Onze sondes à quarante-cinq secondes, toutes les minutes, ne
+        // tiennent pas : elles se chevauchent, la garde les empêche de partir,
+        // et la supervision décroche sans rien dire.
+        $this->sonde->update(['interval_minutes' => 60]);
+        $this->travelTo('2026-09-02 10:00:00');
+
+        $this->tourner(7);
+        $this->assertSame(7, $this->fenetre->fresh()->last_value);
+
+        $this->travelTo('2026-09-02 10:30:00');
+        $this->tourner(99);
+
+        // Une demi-heure plus tard : trop tôt, la valeur n'a pas bougé.
+        $this->assertSame(7, $this->fenetre->fresh()->last_value);
+
+        $this->travelTo('2026-09-02 11:05:00');
+        $this->tourner(99);
+
+        $this->assertSame(99, $this->fenetre->fresh()->last_value);
+    }
+
+    public function test_la_cadence_par_defaut_laisse_tourner_chaque_minute(): void
+    {
+        // Aucune sonde existante ne change de rythme.
+        $this->travelTo('2026-09-02 10:00:00');
+        $this->tourner(7);
+
+        $this->travelTo('2026-09-02 10:01:00');
+        $this->tourner(9);
+
+        $this->assertSame(9, $this->fenetre->fresh()->last_value);
+    }
+
+    public function test_les_colonnes_en_plus_sont_conservees_comme_detail(): void
+    {
+        // Une somme totale sans sa décomposition oblige à créer une sonde par
+        // portefeuille, et à en payer quatre fois le coût.
+        $this->detail = ['CP' => 12000, 'MC1' => 8000, 'MC2' => 3000];
+
+        $this->tourner(23000);
+
+        $this->assertSame(
+            ['CP' => 12000, 'MC1' => 8000, 'MC2' => 3000],
+            $this->fenetre->fresh()->last_detail,
+        );
+    }
+
+    public function test_le_detail_ne_decide_jamais_d_un_palier(): void
+    {
+        // C'est ce qui garde un palier interprétable : un seuil se lit sur un
+        // nombre, pas sur une décomposition.
+        $this->detail = ['CP' => 100000];
+
+        $this->tourner(2);
+
+        $this->assertSame([], $this->alertes());
+        $this->assertSame(0, $this->fenetre->fresh()->severest_tier);
+    }
+
+    public function test_sans_colonne_supplementaire_le_detail_reste_vide(): void
+    {
+        $this->tourner(5);
+
+        $this->assertNull($this->fenetre->fresh()->last_detail);
+    }
+
+    public function test_une_sonde_en_echec_ne_salit_pas_les_autres(): void
+    {
+        // Le défaut constaté en usage : une seule sonde trop lente peignait son
+        // « statement timeout » sur les dix autres cartes de la même base, qui
+        // allaient parfaitement bien. On cherchait une panne partout au lieu
+        // d'une requête à un seul endroit.
+        $saine = MonitoringProbe::create([
+            'id' => (string) Str::uuid(),
+            'database_id' => $this->sonde->database_id,
+            'title' => 'Celle qui va bien',
+            'query' => 'select count(*) as valeur from t where d >= :depuis',
+        ]);
+        MonitoringProbeWindow::create([
+            'id' => (string) Str::uuid(),
+            'probe_id' => $saine->id,
+            'hours' => 24,
+            'tiers' => [3],
+        ]);
+
+        $lente = $this->sonde;
+        $casse = new class extends DatabaseConnector
+        {
+            public function __construct() {}
+
+            public function read(
+                MonitoredDatabase $base,
+                string $sql,
+                array $bindings = [],
+                ?int $timeoutMs = null,
+            ): array {
+                if (str_contains($sql, 'payment')) {
+                    throw new \RuntimeException('SQLSTATE[57014]: statement timeout');
+                }
+
+                return ['valeur' => 1, 'detail' => []];
+            }
+        };
+        $this->app->instance(DatabaseConnector::class, $casse);
+
+        app(ProbeRunner::class)->runAll();
+
+        $this->assertStringContainsString(
+            '57014',
+            $lente->fresh()->last_error ?? '',
+        );
+        $this->assertNull($saine->fresh()->last_error);
+
+        // Et la base, elle, n'est pas déclarée en panne pour autant.
+        $this->assertNull($lente->database->fresh()->last_error);
+    }
+
+    public function test_une_sonde_qui_se_retablit_efface_son_erreur(): void
+    {
+        $this->sonde->update(['last_error' => 'timeout précédent']);
+
+        $this->tourner(1);
+
+        $this->assertNull($this->sonde->fresh()->last_error);
     }
 }

@@ -28,7 +28,16 @@ use Throwable;
  */
 class DatabaseConnector
 {
-    /** Au-delà, une sonde n'est plus une sonde : c'est un rapport. */
+    /**
+     * Le plafond par défaut, quand la sonde n'en fixe pas.
+     *
+     * Huit secondes est le bon ordre de grandeur pour compter des événements
+     * sur une table indexée. Ce ne l'est pas pour croiser des centaines de
+     * milliers de lignes de journal : le tableau de bord Paynala accorde
+     * 45 secondes à ces requêtes-là. Une sonde peut donc relever son propre
+     * plafond — mais il en faut un, sinon une requête abandonnée immobilise
+     * une connexion jusqu'à ce que quelqu'un s'en aperçoive.
+     */
     public const TIMEOUT_MS = 8000;
 
     /**
@@ -38,11 +47,12 @@ class DatabaseConnector
      *
      * @throws Throwable
      */
-    public function readValue(
+    public function read(
         MonitoredDatabase $base,
         string $sql,
         array $bindings = [],
-    ): int {
+        ?int $timeoutMs = null,
+    ): array {
         return $this->on($base, function (Connection $cx) use ($sql, $bindings) {
             $lignes = $cx->select($sql, $bindings);
 
@@ -50,23 +60,39 @@ class DatabaseConnector
                 // Une sonde qui ne rend rien vaut zéro, pas une panne : un
                 // `count(*)` filtré rend toujours une ligne, mais un `sum` sur
                 // un ensemble vide peut n'en rendre aucune.
-                return 0;
+                return ['valeur' => 0, 'detail' => []];
             }
 
             $premiere = (array) $lignes[0];
-            $valeur = $premiere['valeur'] ?? null;
 
-            if ($valeur === null) {
-                // `sum()` sans ligne rend NULL. C'est zéro, pas une erreur.
-                return array_key_exists('valeur', $premiere)
-                    ? 0
-                    : throw new \RuntimeException(
-                        'La requête doit rendre une colonne nommée « valeur ».',
-                    );
+            if (! array_key_exists('valeur', $premiere)) {
+                throw new \RuntimeException(
+                    'La requête doit rendre une colonne nommée « valeur ».',
+                );
             }
 
-            return (int) $valeur;
-        });
+            // Tout ce que la requête rend en plus est conservé tel quel : c'est
+            // la décomposition qu'on affichera sous le chiffre. Une somme
+            // totale sans son détail oblige à créer une sonde par
+            // portefeuille, et à en payer quatre fois le coût.
+            $detail = [];
+            foreach ($premiere as $colonne => $brut) {
+                if ($colonne === 'valeur' || $brut === null) {
+                    continue;
+                }
+
+                $detail[(string) $colonne] = is_numeric($brut)
+                    ? (int) $brut
+                    : (string) $brut;
+            }
+
+            return [
+                // `sum()` sur un ensemble vide rend NULL. C'est zéro, pas une
+                // erreur.
+                'valeur' => (int) ($premiere['valeur'] ?? 0),
+                'detail' => $detail,
+            ];
+        }, $timeoutMs);
     }
 
     /**
@@ -120,8 +146,11 @@ class DatabaseConnector
      * sur deux bases ne doivent jamais se partager un pool, sous peine qu'une
      * base lente affame les autres.
      */
-    private function on(MonitoredDatabase $base, callable $travail): mixed
-    {
+    private function on(
+        MonitoredDatabase $base,
+        callable $travail,
+        ?int $timeoutMs = null,
+    ): mixed {
         $nom = 'monitoring_'.$base->id;
 
         Config::set("database.connections.{$nom}", [
@@ -141,7 +170,9 @@ class DatabaseConnector
 
         try {
             $cx = DB::connection($nom);
-            $cx->statement('set statement_timeout = '.self::TIMEOUT_MS);
+            $cx->statement(
+                'set statement_timeout = '.($timeoutMs ?? self::TIMEOUT_MS),
+            );
 
             // En lecture seule au niveau du serveur : Postgres refusera toute
             // écriture, quels que soient les droits du compte.

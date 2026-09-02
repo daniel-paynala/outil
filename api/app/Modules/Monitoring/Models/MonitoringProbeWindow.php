@@ -18,7 +18,7 @@ class MonitoringProbeWindow extends Model
 
     protected $fillable = [
         'probe_id', 'hours', 'mode', 'direction', 'tiers',
-        'severest_tier', 'last_value', 'last_run_at',
+        'severest_tier', 'last_value', 'last_detail', 'last_run_at',
     ];
 
     /**
@@ -84,6 +84,7 @@ class MonitoringProbeWindow extends Model
     {
         return [
             'tiers' => 'array',
+            'last_detail' => 'array',
             'hours' => 'integer',
             'severest_tier' => 'integer',
             'last_value' => 'integer',

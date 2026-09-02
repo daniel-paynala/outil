@@ -108,6 +108,17 @@ export type ProbeWindow = {
   severest_tier: number;
 
   last_value: number | null;
+
+  /**
+   * Les colonnes que la requête rend en plus de `valeur`.
+   *
+   * Une sonde ne peut alerter que sur un seul nombre — c'est ce qui garde un
+   * palier interprétable. Mais un total sans sa décomposition obligerait à
+   * créer une sonde par portefeuille, et à en payer quatre fois le coût.
+   * Affiché sous le chiffre, jamais utilisé pour décider.
+   */
+  last_detail?: Record<string, number | string> | null;
+
   last_run_at: string | null;
 };
 
@@ -121,6 +132,15 @@ export type Probe = {
 
   query: string;
   enabled: boolean;
+
+  /** Plafond côté Postgres, en millisecondes. */
+  timeout_ms?: number;
+
+  /** Cadence d'exécution, en minutes. */
+  interval_minutes?: number;
+
+  /** Le dernier échec de cette sonde — le sien, pas celui de sa base. */
+  last_error?: string | null;
 
   /** Depuis quand on compte. Posé au dernier acquittement. */
   counting_from: string | null;

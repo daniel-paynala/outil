@@ -17,9 +17,14 @@ class MonitoringProbe extends Model
 {
     use HasUuids;
 
+    protected $attributes = [
+        'timeout_ms' => 8000,
+        'interval_minutes' => 1,
+    ];
+
     protected $fillable = [
-        'database_id', 'title', 'unit', 'query',
-        'counting_from', 'acknowledged_by', 'enabled', 'created_by',
+        'database_id', 'title', 'unit', 'query', 'timeout_ms', 'interval_minutes',
+        'counting_from', 'acknowledged_by', 'enabled', 'last_error', 'created_by',
     ];
 
     protected function casts(): array
@@ -103,6 +108,28 @@ class MonitoringProbe extends Model
      * courant : celui-ci peut être redescendu sans que personne n'ait rien fait
      * — et c'est précisément le cas où il ne faut pas refermer tout seul.
      */
+    /**
+     * Est-il temps de la relancer ?
+     *
+     * Onze sondes qui mettent quarante-cinq secondes, toutes les minutes, ne
+     * tiennent pas : elles se chevauchent, la garde les empêche de partir, et
+     * la supervision décroche sans rien dire. Un cumul mensuel n'a aucun
+     * besoin de tourner chaque minute — son chiffre bouge de quelques francs.
+     * Une sonde de time-outs, si.
+     */
+    public function isDue(): bool
+    {
+        $cadence = max($this->interval_minutes ?? 1, 1);
+        if ($cadence <= 1) {
+            return true;
+        }
+
+        $dernier = $this->windows->max('last_run_at');
+
+        return $dernier === null
+            || $dernier->addMinutes($cadence)->lessThanOrEqualTo(now());
+    }
+
     public function hasOpenIncident(): bool
     {
         return $this->windows->contains(fn ($w) => $w->severest_tier > 0);

@@ -93,6 +93,8 @@ export default function ProbeDrawer({
   const [titre, setTitre] = useState(probe?.title ?? "");
   const [unite, setUnite] = useState(probe?.unit ?? "événements");
   const [requete, setRequete] = useState(probe?.query ?? EXEMPLE);
+  const [delai, setDelai] = useState(probe?.timeout_ms ?? 8000);
+  const [cadence, setCadence] = useState(probe?.interval_minutes ?? 1);
   const [fenetres, setFenetres] = useState<WindowDraft[]>(
     probe?.windows.length
       ? probe.windows.map((f) => ({
@@ -112,7 +114,9 @@ export default function ProbeDrawer({
   const [annuaire, setAnnuaire] = useState<Personne[]>([]);
 
   const [essai, setEssai] = useState<
-    { ok: true; value: number } | { ok: false; error: string } | null
+    | { ok: true; value: number; detail?: Record<string, number | string> }
+    | { ok: false; error: string }
+    | null
   >(null);
   const [enEssai, setEnEssai] = useState(false);
   const [envoi, setEnvoi] = useState(false);
@@ -154,13 +158,14 @@ export default function ProbeDrawer({
           database_id: databaseId,
           query: requete,
           hours: fenetres[0]?.hours ?? 24,
+          timeout_ms: delai,
         }),
       });
       const corps = await res.json().catch(() => ({}));
 
       setEssai(
         res.ok && corps.ok
-          ? { ok: true, value: corps.value }
+          ? { ok: true, value: corps.value, detail: corps.detail }
           : {
               ok: false,
               error:
@@ -194,6 +199,8 @@ export default function ProbeDrawer({
             title: titre.trim(),
             unit: unite.trim() || "événements",
             query: requete,
+            timeout_ms: delai,
+            interval_minutes: cadence,
             ...(viewers === null ? {} : { viewers: viewers.map((v) => v.id) }),
             windows: fenetres.map((f) => ({
               hours: f.hours,
@@ -547,6 +554,51 @@ export default function ProbeDrawer({
               l&apos;incident traité — une fenêtre vide de paliers observe sans
               jamais alerter.
             </p>
+          </div>
+
+          <div className="flex gap-3">
+            <label className="block flex-1">
+              <span className="mb-1.5 block text-xs font-medium">
+                Délai maximum
+              </span>
+              <select
+                value={delai}
+                onChange={(e) => setDelai(Number(e.target.value))}
+                className={inputClass}
+              >
+                <option value={8000}>8 secondes</option>
+                <option value={15000}>15 secondes</option>
+                <option value={30000}>30 secondes</option>
+                <option value={45000}>45 secondes</option>
+                <option value={60000}>60 secondes</option>
+              </select>
+              <span className="mt-1 block text-xs text-[var(--muted)]">
+                Huit secondes suffisent à compter sur une table indexée. Une
+                requête qui croise des centaines de milliers de lignes de
+                journal en demande davantage.
+              </span>
+            </label>
+
+            <label className="block flex-1">
+              <span className="mb-1.5 block text-xs font-medium">Cadence</span>
+              <select
+                value={cadence}
+                onChange={(e) => setCadence(Number(e.target.value))}
+                className={inputClass}
+              >
+                <option value={1}>chaque minute</option>
+                <option value={5}>toutes les 5 minutes</option>
+                <option value={15}>tous les quarts d&apos;heure</option>
+                <option value={60}>toutes les heures</option>
+                <option value={360}>toutes les 6 heures</option>
+                <option value={1440}>une fois par jour</option>
+              </select>
+              <span className="mt-1 block text-xs text-[var(--muted)]">
+                Une dizaine de sondes lentes à la minute finissent par se
+                chevaucher, et la supervision décroche sans rien dire. Un cumul
+                mensuel n&apos;a pas besoin de tourner si souvent.
+              </span>
+            </label>
           </div>
 
           <div>

@@ -372,6 +372,12 @@ function ProbeCard({
         </p>
       )}
 
+      {probe.last_error && (
+        <p className="border-t border-[var(--border)] px-4 py-2 text-xs text-[var(--color-warning)]">
+          {probe.last_error}
+        </p>
+      )}
+
       <div className="grid gap-px border-t border-[var(--border)] bg-[var(--border)] sm:grid-cols-2 lg:grid-cols-3">
         {probe.windows.map((fenetre, i) => (
           <WindowCell
@@ -428,10 +434,23 @@ function WindowCell({
           style={franchi ? { color: COULEUR_NIVEAU[niveau] } : undefined}
           className="text-xl font-semibold tabular-nums"
         >
-          {valeur ?? "—"}
+          {valeur === null ? "—" : valeur.toLocaleString("fr-FR")}
         </span>
         <span className="text-xs text-[var(--muted)]">{unit}</span>
       </p>
+      {fenetre.last_detail && Object.keys(fenetre.last_detail).length > 0 && (
+        <p className="mt-1 flex flex-wrap gap-x-2.5 gap-y-1 text-xs text-[var(--muted)]">
+          {Object.entries(fenetre.last_detail).map(([nom, v]) => (
+            <span key={nom}>
+              {nom}{" "}
+              <strong className="font-medium tabular-nums text-[var(--foreground)]">
+                {typeof v === "number" ? v.toLocaleString("fr-FR") : v}
+              </strong>
+            </span>
+          ))}
+        </p>
+      )}
+
       <p className="mt-1 text-xs text-[var(--muted)]">
         {franchi
           ? `${seuil} ${fenetre.severest_tier} franchi`

@@ -44,13 +44,23 @@ class ProbeRunner
         $sondes = MonitoringProbe::with(['windows', 'database'])
             ->where('enabled', true)
             ->get()
-            ->filter(fn (MonitoringProbe $s) => $s->database?->isUsable() ?? false);
+            ->filter(fn (MonitoringProbe $s) => $s->database?->isUsable() ?? false)
+            // Filtré ici et non dans la requête : la cadence se lit sur les
+            // fenêtres déjà chargées, et interroger la base pour savoir s'il
+            // faut interroger la base serait un aller-retour de trop.
+            ->filter(fn (MonitoringProbe $s) => $s->isDue());
 
         foreach ($sondes as $sonde) {
             try {
                 $this->run($sonde);
             } catch (Throwable $e) {
-                $sonde->database->update(['last_error' => $e->getMessage()]);
+                // L'erreur appartient à la sonde, pas à la base.
+                //
+                // Constaté en usage : une seule sonde trop lente peignait son
+                // « statement timeout » sur les dix autres cartes de la même
+                // base, qui allaient parfaitement bien. On cherchait une panne
+                // partout au lieu d'une requête à un seul endroit.
+                $sonde->update(['last_error' => $e->getMessage()]);
                 Log::warning('Sonde en échec', [
                     'probe' => $sonde->id,
                     'error' => $e->getMessage(),
@@ -64,11 +74,13 @@ class ProbeRunner
         foreach ($sonde->windows as $fenetre) {
             $depuis = $this->countingFrom($sonde, $fenetre);
 
-            $valeur = $this->connector->readValue(
+            $lu = $this->connector->read(
                 $sonde->database,
                 $sonde->query,
                 ['depuis' => $depuis->toDateTimeString()],
+                $sonde->timeout_ms,
             );
+            $valeur = $lu['valeur'];
 
             $palier = Tiers::toRaise(
                 $valeur,
@@ -79,6 +91,7 @@ class ProbeRunner
 
             $fenetre->update([
                 'last_value' => $valeur,
+                'last_detail' => $lu['detail'] === [] ? null : $lu['detail'],
                 'last_run_at' => now(),
                 // Mis à jour **avant** la notification : si l'envoi échoue, on
                 // préfère une alerte perdue à une alerte répétée à chaque tour.
@@ -92,7 +105,7 @@ class ProbeRunner
             $this->signaler($sonde, $fenetre, $palier, $valeur);
         }
 
-        $sonde->database->update(['last_error' => null]);
+        $sonde->update(['last_error' => null]);
     }
 
     /**
