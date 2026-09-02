@@ -7,56 +7,52 @@
 --
 -- ## Ce que valaient les précédents
 --
--- Je les avais écrits sans connaître les volumes. Mesuré depuis :
---
 --   historique          406 jours, depuis le 23/07/2025
 --   moyenne 30 jours      7 348 690 F/jour
 --   moyenne de l'année    3 932 945 F/jour   (l'activité a presque doublé)
 --   cumul                 1,12 Md
 --   année en cours        960 M
 --
--- Le cumul « depuis toujours » dépassait donc déjà mes trois premiers jalons.
--- Ils auraient été franchis au tout premier tour — un seul signalement, la
--- règle sautant les paliers intermédiaires, puis plus rien pendant des années.
+-- Le cumul dépassait déjà mes trois premiers jalons. Ils ont d'ailleurs tous
+-- sonné au premier tour — un seul signalement chacun, la règle sautant les
+-- paliers intermédiaires — puis n'auraient plus rien dit pendant des années.
+-- Une échelle dont tous les crans sont derrière soi ne dit plus rien, et on
+-- croit encore la lire.
 --
--- ## Comment ceux-ci sont choisis
+-- ## Pourquoi la clé est le mode et non le titre
 --
--- Un jalon doit tomber assez souvent pour qu'on le remarque, assez rarement
--- pour qu'il compte. Au rythme des trente derniers jours :
+-- Un premier jet appariait sur le titre exact. Une sonde renommée depuis
+-- l'écran n'aurait alors rien reçu, et l'`update` aurait rendu « succès » sans
+-- toucher une ligne — la pire forme d'échec, celle qui se félicite.
 --
---   ce mois-ci        100 M   dans ~11 jours     → un signalement par mois
---   cette année       1 Md    dans ~5 jours      → puis 2 Md en fin d'année
---   depuis toujours   1,5 Md  dans ~51 jours     → un par trimestre environ
+-- Le mode de fenêtre, lui, ne se renomme pas : `mensuelle`, `annuelle` et
+-- `totale` sont les trois seules fenêtres de période, et l'unité « F CFA » les
+-- distingue de toute autre sonde qui en porterait une.
 --
--- Les jalons suivants de chaque échelle sont là pour les mois et les années
--- exceptionnels. Ils ne sonneront pas cette année, et c'est voulu : une échelle
--- dont tous les crans sont franchis ne dit plus rien.
+-- Le compte de lignes touchées est affiché à la fin. Il doit valoir 3.
 
 update monitoring_probe_windows w
-set tiers = '[100000000, 250000000, 500000000, 1000000000]'::jsonb
+set tiers = case w.mode
+    when 'mensuelle' then '[100000000, 250000000, 500000000, 1000000000]'
+    when 'annuelle'  then '[1000000000, 2000000000, 3000000000, 5000000000]'
+    when 'totale'    then '[1500000000, 2000000000, 3000000000, 5000000000, 10000000000]'
+end::jsonb
 from monitoring_probes p
 where p.id = w.probe_id
-  and p.title = 'Montant collecté — ce mois-ci';
-
-update monitoring_probe_windows w
-set tiers = '[1000000000, 2000000000, 3000000000, 5000000000]'::jsonb
-from monitoring_probes p
-where p.id = w.probe_id
-  and p.title = 'Montant collecté — cette année';
-
-update monitoring_probe_windows w
-set tiers = '[1500000000, 2000000000, 3000000000, 5000000000, 10000000000]'::jsonb
-from monitoring_probes p
-where p.id = w.probe_id
-  and p.title = 'Montant collecté — depuis toujours';
+  and p.unit = 'F CFA'
+  and w.mode in ('mensuelle', 'annuelle', 'totale');
 
 -- Ce qui est posé, et à quelle distance du prochain jalon.
 select
     p.title,
+    w.mode,
     w.tiers,
+    w.last_value,
     w.severest_tier as deja_signale,
-    w.last_value
+    p.timeout_ms,
+    w.hours         as rechargement_h,
+    w.last_run_at
 from monitoring_probes p
 join monitoring_probe_windows w on w.probe_id = p.id
-where p.title like 'Montant collecté%'
+where p.unit = 'F CFA'
 order by w.mode;
