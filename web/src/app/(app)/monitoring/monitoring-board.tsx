@@ -442,23 +442,32 @@ function WindowCell({
         <span className="text-xs text-[var(--muted)]">{unit}</span>
       </p>
       {fenetre.last_detail && Object.keys(fenetre.last_detail).length > 0 && (
-        <p className="mt-1 flex flex-wrap gap-x-2.5 gap-y-1 text-xs text-[var(--muted)]">
+        /*
+          Une ligne par colonne rendue, le nom à gauche et le montant aligné à
+          droite. Des nombres qu'on compare se lisent en colonne, jamais en
+          phrase : quatre portefeuilles bout à bout obligent à chercher où
+          finit l'un et où commence l'autre.
+        */
+        <dl className="mt-1.5 space-y-0.5 text-xs text-[var(--muted)]">
           {Object.entries(fenetre.last_detail).map(([nom, v]) => (
-            <span key={nom}>
-              {nom}{" "}
-              <strong className="font-medium tabular-nums text-[var(--foreground)]">
+            <div
+              key={nom}
+              className="flex items-baseline justify-between gap-3"
+            >
+              <dt className="truncate">{nom}</dt>
+              <dd className="shrink-0 font-medium tabular-nums text-[var(--foreground)]">
                 {typeof v === "number" ? v.toLocaleString("fr-FR") : v}
-              </strong>
-            </span>
+              </dd>
+            </div>
           ))}
-        </p>
+        </dl>
       )}
 
       <p className="mt-1 text-xs text-[var(--muted)]">
         {franchi
-          ? `${seuil} ${fenetre.severest_tier} franchi`
+          ? `${seuil} ${fenetre.severest_tier.toLocaleString("fr-FR")} franchi`
           : suivant !== null
-            ? `prochain ${seuil} ${suivant}`
+            ? `prochain ${seuil} ${suivant.toLocaleString("fr-FR")}`
             : fenetre.tiers.length === 0
               ? "observée, sans palier"
               : "au-delà du dernier palier"}
