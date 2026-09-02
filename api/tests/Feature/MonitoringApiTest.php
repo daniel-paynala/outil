@@ -67,14 +67,44 @@ class MonitoringApiTest extends TestCase
 
     // ── La frontière ────────────────────────────────────────────────────
 
-    public function test_sans_droit_la_supervision_n_existe_pas(): void
+    public function test_l_etat_de_la_production_est_ouvert_a_l_equipe(): void
     {
-        // 404 et non 403 : un 403 confirmerait qu'Arche surveille des bases, à
-        // quelqu'un qui n'a pas à le savoir.
-        [$_, $entetes] = $this->authenticate();
+        // La supervision a d'abord été le premier menu à droit d'accès. À
+        // l'usage, l'arbitrage a changé : savoir si les paiements passent
+        // concerne les cinq personnes, pas trois. La confidentialité s'exerce
+        // désormais sonde par sonde plutôt qu'en fermant la porte d'entrée.
+        [, $entetes] = $this->authenticate();
+        $this->sonde($this->base());
 
-        $this->getJson('/api/monitoring/probes', $entetes)->assertNotFound();
+        $this->getJson('/api/monitoring/probes', $entetes)
+            ->assertOk()
+            ->assertJsonCount(1, 'probes');
+        $this->getJson('/api/monitoring/alerts', $entetes)->assertOk();
+    }
+
+    public function test_l_adresse_des_bases_reste_fermee(): void
+    {
+        // Ce qui reste réservé n'est pas l'état, c'est l'accès : voir qu'une
+        // base va mal ne demande pas de savoir où elle est ni avec quel
+        // identifiant on s'y branche.
+        [, $entetes] = $this->authenticate();
+        $this->base();
+
         $this->getJson('/api/monitoring/databases', $entetes)->assertNotFound();
+    }
+
+    public function test_une_sonde_restreinte_le_reste_pour_un_membre_sans_droit(): void
+    {
+        // La porte d'entrée s'ouvre, pas les sondes restreintes. Sans ce test,
+        // l'ouverture du menu aurait pu emporter la restriction avec elle.
+        [$autorise] = $this->authenticate();
+        [, $entetes] = $this->authenticate();
+        $sonde = $this->sonde($this->base());
+        $sonde->viewers()->sync([$autorise->id]);
+
+        $this->getJson('/api/monitoring/probes', $entetes)
+            ->assertOk()
+            ->assertJsonCount(0, 'probes');
     }
 
     public function test_consulter_ne_permet_pas_de_brancher_une_base(): void

@@ -3,7 +3,8 @@
 import Link from "next/link";
 import Image from "next/image";
 import { usePathname, useRouter } from "next/navigation";
-import { Activity,
+import {
+  Activity,
   LayoutDashboard,
   FolderKanban,
   ListChecks,
@@ -38,29 +39,28 @@ const NAV: NavItem[] = [
 export default function Sidebar({
   email,
   isAdmin = false,
-  capabilities = [],
   avatarUrl = null,
   name = null,
 }: {
   email: string;
   isAdmin?: boolean;
-  /** Droits accordés au cas par cas — voir `user_capabilities` côté API. */
-  capabilities?: string[];
   avatarUrl?: string | null;
   name?: string | null;
 }) {
   const pathname = usePathname();
   const router = useRouter();
   const supabase = createClient();
-  // La supervision donne à voir des bases de production : elle n'apparaît que
-  // pour qui en a le droit. Le reste de l'outil reste visible de tous.
-  const peutSuperviser = capabilities.includes("monitoring");
-
+  // La supervision a d'abord été le premier menu à droit d'accès. À l'usage,
+  // l'arbitrage a changé : savoir si les paiements passent concerne toute
+  // l'équipe. La confidentialité s'exerce désormais sonde par sonde côté
+  // serveur — une sonde restreinte n'arrive pas dans la liste — plutôt qu'en
+  // masquant l'entrée.
+  //
+  // La barre n'a donc plus besoin des droits accordés : l'écran de supervision
+  // les relit lui-même pour décider ce qu'il laisse configurer.
   const nav: NavItem[] = [
     ...NAV,
-    ...(peutSuperviser
-      ? [{ href: "/monitoring", label: "Supervision", icon: Activity }]
-      : []),
+    { href: "/monitoring", label: "Supervision", icon: Activity },
     ...(isAdmin
       ? [
           { href: "/admin/users", label: "Utilisateurs", icon: Shield },
@@ -129,11 +129,7 @@ export default function Sidebar({
 
       <div className="border-t border-[var(--border)] p-3">
         <div className="flex items-center gap-2.5 px-2 py-2 rounded-md">
-          <Link
-            href="/account"
-            title="Mon compte"
-            className="hover:opacity-90"
-          >
+          <Link href="/account" title="Mon compte" className="hover:opacity-90">
             <Avatar user={{ email, name, avatar_url: avatarUrl }} size="md" />
           </Link>
           <Link

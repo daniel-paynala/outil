@@ -15,9 +15,9 @@ type MeResponse = {
   /**
    * Les droits accordés au-delà du couple membre/administrateur.
    *
-   * Ils viennent du serveur et ne se déduisent de rien : afficher un menu parce
-   * que l'interface a supposé un droit l'ouvrirait sur une page vide, et une
-   * porte qu'on voit sans pouvoir la franchir est pire qu'une porte absente.
+   * La barre latérale ne s'en sert plus depuis que la supervision est ouverte à
+   * toute l'équipe. L'écran de supervision, lui, les relit pour décider ce
+   * qu'il laisse configurer — il les demande donc à `/api/me` de son côté.
    */
   capabilities?: string[];
 };
@@ -37,13 +37,11 @@ export default async function AppLayout({
   let isAdmin = false;
   let userName: string | null = null;
   let avatarUrl: string | null = null;
-  let capabilities: string[] = [];
   try {
     const me = await apiJson<MeResponse>("/api/me");
     isAdmin = me.user?.role === "admin";
     userName = me.user?.name ?? null;
     avatarUrl = me.user?.avatar_url ?? null;
-    capabilities = me.capabilities ?? [];
   } catch {
     // Si l'API est down on continue sans le lien admin — pas bloquant.
   }
@@ -55,7 +53,6 @@ export default async function AppLayout({
         <Sidebar
           email={user.email ?? ""}
           isAdmin={isAdmin}
-          capabilities={capabilities}
           avatarUrl={avatarUrl}
           name={userName}
         />

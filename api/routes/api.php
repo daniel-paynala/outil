@@ -286,8 +286,24 @@ Route::middleware('supabase.auth')->group(function () {
      * Le middleware rend 404 plutôt que 403 — voir `EnsureCapability`. Sans
      * droit, ces routes n'existent pas.
      */
-    Route::middleware('capability:monitoring')->prefix('monitoring')->group(function () {
-        Route::get('databases', [DatabaseController::class, 'index']);
+    /*
+     * L'état de la production est ouvert à toute l'équipe.
+     *
+     * La supervision a d'abord été le premier menu à droit d'accès. À l'usage,
+     * l'arbitrage a changé : savoir si les paiements passent concerne les cinq
+     * personnes, pas trois. Un compteur d'erreurs et un montant collecté ne
+     * sont pas des secrets pour qui travaille dessus tous les jours.
+     *
+     * La confidentialité s'exerce désormais **sonde par sonde** —
+     * `monitoring_probe_viewers` — plutôt qu'en fermant la porte d'entrée. Une
+     * sonde restreinte reste invisible ici comme ailleurs, notifications
+     * comprises.
+     *
+     * Ce qui reste fermé n'est pas l'état, c'est l'accès : l'hôte d'une base,
+     * son compte, la console SQL et l'écriture des sondes demandent toujours
+     * `monitoring.admin`.
+     */
+    Route::prefix('monitoring')->group(function () {
         Route::get('probes', [ProbeController::class, 'index']);
         Route::get('alerts', [ProbeController::class, 'alerts']);
 
@@ -295,6 +311,13 @@ Route::middleware('supabase.auth')->group(function () {
         // incident, et le réserver aux administrateurs laisserait les alertes
         // ouvertes en attendant qu'un seul d'entre eux passe.
         Route::post('probes/{probe}/acknowledge', [ProbeController::class, 'acknowledge']);
+    });
+
+    // La liste des bases porte leur hôte et leur compte de connexion. Elle
+    // reste réservée : voir qu'une base va mal ne demande pas de savoir où
+    // elle est ni avec quel identifiant on s'y branche.
+    Route::middleware('capability:monitoring')->prefix('monitoring')->group(function () {
+        Route::get('databases', [DatabaseController::class, 'index']);
     });
 
     Route::middleware('capability:monitoring.admin')->prefix('monitoring')->group(function () {

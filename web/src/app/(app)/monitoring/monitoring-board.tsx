@@ -92,12 +92,21 @@ export default function MonitoringBoard({
   databases,
   alerts,
   canAdmin,
+  voitLesBases = false,
 }: {
   probes: Probe[];
   openIncidents: string[];
   databases: MonitoredDatabase[];
   alerts: MonitoringAlert[];
   canAdmin: boolean;
+
+  /**
+   * Le droit de voir la liste des bases — leur hôte, leur compte.
+   *
+   * Distinct de celui d'administrer : on peut vouloir montrer où sont les
+   * bases sans laisser en brancher de nouvelles.
+   */
+  voitLesBases?: boolean;
 }) {
   const maintenant = useMonitoringClock();
   const router = useRouter();
@@ -239,12 +248,14 @@ export default function MonitoringBoard({
           </p>
         )}
 
-        <DatabaseList
-          databases={databases}
-          canAdmin={canAdmin}
-          onAdd={() => setBaseOuverte("nouvelle")}
-          onEdit={(base) => setBaseOuverte(base)}
-        />
+        {voitLesBases && (
+          <DatabaseList
+            databases={databases}
+            canAdmin={canAdmin}
+            onAdd={() => setBaseOuverte("nouvelle")}
+            onEdit={(base) => setBaseOuverte(base)}
+          />
+        )}
 
         {canAdmin && <SqlConsole databases={databases} />}
 

@@ -1,5 +1,3 @@
-import { notFound } from "next/navigation";
-
 import { apiFetch } from "@/lib/api/server";
 import type {
   MonitoredDatabase,
@@ -23,11 +21,16 @@ type MeResponse = { capabilities?: string[] };
  * squelette puis remplir section par section ferait lire un état incomplet au
  * moment précis où on a besoin de l'état complet.
  *
- * ## Pourquoi 404 et non 403
+ * ## Ouverte à toute l'équipe
  *
- * L'API répond 404 à qui n'a pas le droit — la supervision n'existe pas pour
- * lui. On garde la même réponse : un 403 dirait qu'Arche surveille des bases de
- * production, ce qui est déjà une information.
+ * La supervision a d'abord été le premier écran à droit d'accès. À l'usage,
+ * l'arbitrage a changé : savoir si les paiements passent concerne les cinq
+ * personnes. La confidentialité s'exerce sonde par sonde — une sonde
+ * restreinte n'arrive pas dans la réponse, ici comme dans les notifications.
+ *
+ * Ce qui reste réservé n'est pas l'état mais l'accès : la liste des bases porte
+ * leur hôte et leur compte de connexion, et l'API la refuse sans le droit. Elle
+ * revient alors vide, et l'écran n'affiche simplement pas cette section.
  */
 export default async function MonitoringPage() {
   const [probesRes, databasesRes, alertsRes, meRes] = await Promise.all([
@@ -37,7 +40,6 @@ export default async function MonitoringPage() {
     apiFetch("/api/me"),
   ]);
 
-  if (probesRes.status === 404 || probesRes.status === 403) notFound();
   if (!probesRes.ok) {
     throw new Error(`Supervision indisponible (${probesRes.status})`);
   }
@@ -56,6 +58,7 @@ export default async function MonitoringPage() {
       databases={databases}
       alerts={alerts}
       canAdmin={(me.capabilities ?? []).includes("monitoring.admin")}
+      voitLesBases={(me.capabilities ?? []).includes("monitoring")}
     />
   );
 }
