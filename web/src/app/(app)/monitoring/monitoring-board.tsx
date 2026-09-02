@@ -412,16 +412,18 @@ function ProbeCard({
 function WindowCell({
   window: fenetre,
   unit,
+  jalon = false,
 }: {
   window: ProbeWindow;
   unit: string;
+  jalon?: boolean;
 }) {
   const maintenant = useHorloge();
   const valeur = fenetre.last_value;
   const suivant = nextTier(fenetre);
   const franchi = fenetre.severest_tier > 0;
-  const niveau = windowLevel(fenetre);
-  const seuil = seuilLabel(fenetre);
+  const niveau = windowLevel(fenetre, jalon);
+  const seuil = seuilLabel(fenetre, jalon);
 
   return (
     <div className="bg-[var(--background)] px-4 py-3">
@@ -465,7 +467,7 @@ function WindowCell({
 
       <p className="mt-1 text-xs text-[var(--muted)]">
         {franchi
-          ? `${seuil} ${fenetre.severest_tier.toLocaleString("fr-FR")} franchi`
+          ? `${seuil} ${fenetre.severest_tier.toLocaleString("fr-FR")} ${jalon ? "atteint" : "franchi"}`
           : suivant !== null
             ? `prochain ${seuil} ${suivant.toLocaleString("fr-FR")}`
             : fenetre.tiers.length === 0

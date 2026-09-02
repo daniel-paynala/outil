@@ -27,6 +27,7 @@ return new class extends Migration
             $table->text('password');
             $table->timestamp('read_only_verified_at')->nullable();
             $table->text('last_error')->nullable();
+            $table->string('nature', 16)->default('incident');
             $table->uuid('created_by')->nullable();
             $table->timestamps();
 
@@ -54,6 +55,7 @@ return new class extends Migration
             $table->foreign('acknowledged_by')->references('id')->on('users')
                 ->nullOnDelete();
             $table->text('last_error')->nullable();
+            $table->string('nature', 16)->default('incident');
             $table->integer('timeout_ms')->default(8000);
             $table->integer('interval_minutes')->default(1);
         });

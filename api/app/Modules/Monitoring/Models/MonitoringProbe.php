@@ -20,11 +20,13 @@ class MonitoringProbe extends Model
     protected $attributes = [
         'timeout_ms' => 8000,
         'interval_minutes' => 1,
+        'nature' => 'incident',
     ];
 
     protected $fillable = [
         'database_id', 'title', 'unit', 'query', 'timeout_ms', 'interval_minutes',
-        'counting_from', 'acknowledged_by', 'enabled', 'last_error', 'created_by',
+        'counting_from', 'acknowledged_by', 'enabled', 'last_error', 'nature',
+        'created_by',
     ];
 
     protected function casts(): array
@@ -124,8 +126,28 @@ class MonitoringProbe extends Model
         );
     }
 
+    /**
+     * Franchir un palier est-il une bonne nouvelle ?
+     *
+     * Le sens de dégradation ne suffisait pas à le dire : une sonde d'erreurs
+     * croissante et une sonde de chiffre d'affaires croissante montent toutes
+     * les deux, mais l'une empire pendant que l'autre prospère. La couleur, la
+     * section et le mot de la notification en dépendent.
+     */
+    public function isMilestone(): bool
+    {
+        return $this->nature === 'jalon';
+    }
+
     public function hasOpenIncident(): bool
     {
+        // Un jalon franchi n'attend rien de personne : il ne peut donc pas
+        // ouvrir un incident, et n'a rien à acquitter. Le jalon suivant se
+        // signalera de lui-même, puisqu'il est plus haut.
+        if ($this->isMilestone()) {
+            return false;
+        }
+
         return $this->windows->contains(fn ($w) => $w->severest_tier > 0);
     }
 }

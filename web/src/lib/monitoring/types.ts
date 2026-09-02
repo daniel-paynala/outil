@@ -148,6 +148,17 @@ export type Probe = {
   /** Le dernier échec de cette sonde — le sien, pas celui de sa base. */
   last_error?: string | null;
 
+  /**
+   * Franchir un palier est-il une bonne nouvelle ?
+   *
+   * `incident` — il faut agir. `jalon` — on voulait le savoir.
+   *
+   * Le sens de dégradation ne suffisait pas à le dire : une sonde d'erreurs
+   * croissante et une sonde de chiffre d'affaires croissante montent toutes
+   * les deux, mais l'une empire pendant que l'autre prospère.
+   */
+  nature?: "incident" | "jalon";
+
   /** Depuis quand on compte. Posé au dernier acquittement. */
   counting_from: string | null;
 
@@ -201,10 +212,10 @@ export type MonitoringAlert = {
  * justement pour voir venir. Au-delà, la chose s'aggrave, et la couleur doit le
  * dire sans qu'on ait à comparer deux nombres.
  */
-export type Level = "calme" | "premier" | "aggrave";
+export type Level = "calme" | "premier" | "aggrave" | "jalon";
 
 /** Du moins grave au plus grave — sert à prendre le pire de deux états. */
-const ORDRE: Level[] = ["calme", "premier", "aggrave"];
+const ORDRE: Level[] = ["calme", "jalon", "premier", "aggrave"];
 
 export function pire(a: Level, b: Level): Level {
   return ORDRE.indexOf(a) >= ORDRE.indexOf(b) ? a : b;
@@ -217,7 +228,9 @@ export function pire(a: Level, b: Level): Level {
  * une sonde de time-outs commence à 1, une sonde de soldes insuffisants à 20.
  * « Le premier palier » est la seule formulation qui vaille pour les deux.
  */
-export function windowLevel(w: ProbeWindow): Level {
+export function windowLevel(w: ProbeWindow, jalon = false): Level {
+  if (jalon) return w.severest_tier > 0 ? "jalon" : "calme";
+
   if (w.severest_tier <= 0) return "calme";
   if (w.tiers.length === 0) return "aggrave";
 
@@ -257,12 +270,17 @@ export function probeLevel(p: Probe): Level {
 /** La couleur de chaque état, prise dans les jetons du thème. */
 export const COULEUR_NIVEAU: Record<Level, string> = {
   calme: "var(--color-success)",
+  // Bleu et non orange : un jalon franchi est une nouvelle, pas un
+  // avertissement. Peindre un milliard collecté en orange fait lire
+  // « c'est pas assez ? » — c'est arrivé.
+  jalon: "var(--color-info)",
   premier: "var(--color-warning)",
   aggrave: "var(--color-danger)",
 };
 
 export const LIBELLE_NIVEAU: Record<Level, string> = {
   calme: "Sous le premier palier",
+  jalon: "Jalon franchi",
   premier: "Premier palier franchi",
   aggrave: "Au-delà du premier palier",
 };
@@ -276,6 +294,11 @@ export const LIBELLE_NIVEAU: Record<Level, string> = {
  * doit pas se refermer tout seul.
  */
 export function hasIncident(probe: Probe): boolean {
+  // Un jalon franchi n'attend rien de personne : il ne peut pas ouvrir un
+  // incident, et n'a rien à acquitter. Le jalon suivant se signalera de
+  // lui-même, puisqu'il est plus haut.
+  if (probe.nature === "jalon") return false;
+
   return probe.windows.some((w) => w.severest_tier > 0);
 }
 
@@ -298,7 +321,9 @@ export function nextTier(window: ProbeWindow): number | null {
 }
 
 /** « palier » ou « plancher » — le mot change avec le sens. */
-export function seuilLabel(w: ProbeWindow): string {
+export function seuilLabel(w: ProbeWindow, jalon = false): string {
+  if (jalon) return "jalon";
+
   return w.direction === "decroissant" ? "plancher" : "palier";
 }
 

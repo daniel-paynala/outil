@@ -77,6 +77,7 @@ class ProbeController extends Controller
             'query' => $data['query'],
             'timeout_ms' => $data['timeout_ms'] ?? 8000,
             'interval_minutes' => $data['interval_minutes'] ?? 1,
+            'nature' => $data['nature'] ?? 'incident',
             'created_by' => $this->userId($request),
         ]);
 
@@ -110,6 +111,7 @@ class ProbeController extends Controller
             'query' => $data['query'],
             'timeout_ms' => $data['timeout_ms'] ?? $probe->timeout_ms,
             'interval_minutes' => $data['interval_minutes'] ?? $probe->interval_minutes,
+            'nature' => $data['nature'] ?? $probe->nature,
         ]);
 
         // Les fenêtres sont remplacées, pas fusionnées : changer les paliers
@@ -173,6 +175,7 @@ class ProbeController extends Controller
             // sonde n'est plus une sonde, c'est un rapport.
             'timeout_ms' => ['sometimes', 'integer', 'between:1000,60000'],
             'interval_minutes' => ['sometimes', 'integer', 'between:1,1440'],
+            'nature' => ['sometimes', 'in:incident,jalon'],
             'hours' => ['sometimes', 'integer', 'between:1,720'],
             'timeout_ms' => ['sometimes', 'integer', 'between:1000,60000'],
         ]);

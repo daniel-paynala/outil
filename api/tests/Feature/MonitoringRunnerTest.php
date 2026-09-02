@@ -937,4 +937,68 @@ class MonitoringRunnerTest extends TestCase
             $this->sonde->fresh()->last_error,
         );
     }
+
+    // ── Incident ou jalon ───────────────────────────────────────────────
+
+    public function test_par_defaut_une_sonde_signale_un_incident(): void
+    {
+        // Aucune sonde existante ne change de nature.
+        $this->assertFalse($this->sonde->isMilestone());
+    }
+
+    public function test_un_jalon_franchi_n_ouvre_pas_d_incident(): void
+    {
+        // Le défaut que Daniel a vu : la pastille disait orange sur un
+        // milliard collecté, et il a lu ce qu'elle disait — « c'est pas
+        // assez ? ». Franchir un jalon n'attend rien de personne.
+        $this->sonde->update(['nature' => 'jalon']);
+
+        $this->tourner(50);
+
+        // Le palier est bien signalé — c'est l'incident qui ne s'ouvre pas.
+        $this->assertSame(40, $this->fenetre->fresh()->severest_tier);
+        $this->assertFalse($this->sonde->fresh()->load('windows')->hasOpenIncident());
+    }
+
+    public function test_le_meme_franchissement_ouvre_un_incident_en_mode_incident(): void
+    {
+        // La preuve que c'est bien la nature qui décide, et non la valeur.
+        $this->tourner(50);
+
+        $this->assertTrue($this->sonde->fresh()->load('windows')->hasOpenIncident());
+    }
+
+    public function test_la_notification_dit_jalon_et_non_palier(): void
+    {
+        // « palier franchi » sur un chiffre d'affaires se lit comme un
+        // avertissement. Ce n'en est pas un.
+        $this->sonde->update(['nature' => 'jalon', 'unit' => 'F CFA']);
+        [$user] = $this->authenticate();
+        DB::table('user_capabilities')->insert([
+            'user_id' => $user->id,
+            'capability' => Capability::Monitoring->value,
+            'granted_at' => now(),
+        ]);
+
+        $this->tourner(50);
+
+        $corps = DB::table('notifications')
+            ->where('type', 'monitoring.alert')
+            ->value('body');
+
+        $this->assertStringContainsString('jalon 40', $corps);
+        $this->assertStringNotContainsString('palier', $corps);
+    }
+
+    public function test_un_jalon_signale_toujours_le_suivant(): void
+    {
+        // Sans acquittement possible, c'est la règle du palier strictement
+        // supérieur qui doit suffire — sinon un jalon franchi rendrait la
+        // sonde muette pour toujours.
+        $this->sonde->update(['nature' => 'jalon']);
+
+        $this->tourner(5, 25, 70);
+
+        $this->assertSame([3, 20, 60], $this->alertes());
+    }
 }

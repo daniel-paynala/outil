@@ -230,7 +230,11 @@ class ProbeRunner
         // sous lequel on tombe. Employer le même mot pour les deux ferait lire
         // « palier 50 » à quelqu'un dont la production vient de s'effondrer, et
         // il comprendrait l'inverse.
-        $seuil = $fenetre->direction()->label();
+        // « palier franchi » sur un chiffre d'affaires se lit comme un
+        // avertissement. Ce n'en est pas un.
+        $seuil = $sonde->isMilestone()
+            ? 'jalon'
+            : $fenetre->direction()->label();
 
         // Les montants se comptent en millions de francs. « 45000000 » ne se
         // lit pas sur un écran verrouillé ; « 45 000 000 » se lit.
