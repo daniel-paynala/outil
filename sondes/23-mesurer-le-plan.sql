@@ -26,6 +26,23 @@
 -- raisonnement sur les expressions régulières. Écrire un motif équivalent mais
 -- différent revient donc à ignorer un index taillé pour nous.
 --
+-- ## Ce que la mesure a donné
+--
+-- Sur **une heure** : Index Scan sur `airtel_logs_created_at_idx`, 324 lignes,
+-- **1,34 ms**. Le motif de suffixe est appliqué en filtre après l'index, et il
+-- ne coûte rien à cette échelle.
+--
+-- Sur **un an** : environ **14,7 secondes** — déduites du total de 14 780 ms
+-- pour les trois instructions, dont deux à quelques millisecondes.
+--
+-- Conclusion : l'index fait son travail, le motif n'est pas en cause, et la
+-- sonde annuelle est simplement lourde. Elle ne demande pas une réécriture
+-- mais un plafond de 30 à 45 secondes et une cadence de quelques heures.
+--
+-- ⚠ Les trois instructions ci-dessous s'exécutent toutes, mais le pilote ne
+-- rend que les lignes de la dernière. Lance-les **une par une** — la console
+-- le signale désormais.
+--
 -- Les trois requêtes ci-dessous mesurent au lieu de supposer.
 
 

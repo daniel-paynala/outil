@@ -118,7 +118,19 @@ class DatabaseConnector
      * marqueur — le même piège que les sondes doivent contourner. Ici on veut
      * précisément pouvoir écrire `response ? 'error'` comme dans DBeaver.
      *
-     * @return array{colonnes: array<int, string>, lignes: array<int, array<string, mixed>>, total: int, tronque: bool}
+     * ## Ce que PDO ne dit pas
+     *
+     * Un texte contenant plusieurs instructions séparées par `;` est bien
+     * exécuté en entier par Postgres, mais `pdo_pgsql` ne rend que le dernier
+     * jeu de lignes — et sans le signaler. Trois `explain` collés ensemble
+     * s'exécutent donc tous les trois, on attend quatorze secondes, et on ne
+     * voit que le plan du troisième en croyant l'avoir mesuré seul.
+     *
+     * On ne peut pas récupérer les jeux perdus : `nextRowset()` n'est pas
+     * supporté par ce pilote. On le dit donc, ce qui suffit à ne pas se
+     * tromper sur ce qu'on regarde.
+     *
+     * @return array{colonnes: array<int, string>, lignes: array<int, array<string, mixed>>, total: int, tronque: bool, instructions: int}
      */
     public function runReadOnly(
         MonitoredDatabase $base,
@@ -149,8 +161,91 @@ class DatabaseConnector
                 'lignes' => $lignes,
                 'total' => count($brut),
                 'tronque' => count($brut) > $limite,
+                'instructions' => self::countStatements($sql),
             ];
         }, $timeoutMs);
+    }
+
+    /**
+     * Combien d'instructions ce texte contient-il ?
+     *
+     * Compter les `;` naïvement se tromperait sur le premier littéral venu —
+     * `where nom = 'a;b'` en contient un. On saute donc ce qui ne compte pas :
+     * chaînes, identifiants entre guillemets, dollar-quoting, et les deux
+     * formes de commentaire.
+     *
+     * Approximation assumée : il ne s'agit pas d'exécuter séparément, seulement
+     * d'avertir. Une erreur de comptage se paierait en avertissement de trop,
+     * jamais en résultat faux.
+     */
+    public static function countStatements(string $sql): int
+    {
+        $n = 1;
+        $i = 0;
+        $len = strlen($sql);
+
+        while ($i < $len) {
+            $c = $sql[$i];
+            $deux = substr($sql, $i, 2);
+
+            if ($deux === '--') {
+                $i = ($fin = strpos($sql, "\n", $i)) === false ? $len : $fin;
+
+                continue;
+            }
+
+            if ($deux === '/*') {
+                $i = ($fin = strpos($sql, '*/', $i)) === false ? $len : $fin + 2;
+
+                continue;
+            }
+
+            if ($c === "'" || $c === '"') {
+                $i = self::skipQuoted($sql, $i, $c);
+
+                continue;
+            }
+
+            // Dollar-quoting : $tag$ … $tag$, où l'étiquette peut être vide.
+            if ($c === '$' && preg_match('/^\$[A-Za-z_0-9]*\$/', substr($sql, $i), $m)) {
+                $tag = $m[0];
+                $fin = strpos($sql, $tag, $i + strlen($tag));
+                $i = $fin === false ? $len : $fin + strlen($tag);
+
+                continue;
+            }
+
+            if ($c === ';' && trim(substr($sql, $i + 1)) !== '') {
+                $n++;
+            }
+
+            $i++;
+        }
+
+        return $n;
+    }
+
+    private static function skipQuoted(string $sql, int $i, string $delim): int
+    {
+        $len = strlen($sql);
+        $i++;
+
+        while ($i < $len) {
+            if ($sql[$i] === $delim) {
+                // Un délimiteur doublé est un délimiteur littéral.
+                if (($sql[$i + 1] ?? '') === $delim) {
+                    $i += 2;
+
+                    continue;
+                }
+
+                return $i + 1;
+            }
+
+            $i++;
+        }
+
+        return $len;
     }
 
     /**

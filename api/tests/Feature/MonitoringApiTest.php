@@ -756,4 +756,49 @@ class MonitoringApiTest extends TestCase
             'sql' => 'select 1',
         ], $entetes)->assertStatus(422);
     }
+
+    public function test_le_compte_d_instructions_ignore_ce_qui_n_en_est_pas(): void
+    {
+        // Compter les « ; » naïvement se tromperait sur le premier littéral
+        // venu. L'avertissement doit rester juste, sinon on apprend à
+        // l'ignorer — et le jour où trois requêtes n'en rendent qu'une, on ne
+        // le voit plus.
+        $compter = fn (string $sql) => DatabaseConnector::countStatements($sql);
+
+        $this->assertSame(1, $compter('select 1'));
+        $this->assertSame(1, $compter('select 1;'));
+        $this->assertSame(3, $compter('select 1; select 2; select 3;'));
+        $this->assertSame(1, $compter('select \'a;b\''));
+        $this->assertSame(1, $compter('select "a;b"'));
+        $this->assertSame(1, $compter("select 1 -- ; ceci est un commentaire\n"));
+        $this->assertSame(1, $compter('select 1 /* ; */ , 2'));
+        $this->assertSame(2, $compter('do $$ begin end $$; select 1'));
+    }
+
+    public function test_un_script_a_plusieurs_instructions_est_signale(): void
+    {
+        // `pdo_pgsql` exécute tout mais ne rend que le dernier jeu de lignes,
+        // sans le dire. Trois `explain` collés ensemble s'exécutent tous les
+        // trois, on attend quatorze secondes, et on ne voit que le troisième
+        // en croyant l'avoir mesuré seul.
+        [$user, $entetes] = $this->authenticate();
+        $this->accorder($user->id, Capability::MonitoringAdmin);
+        $base = $this->base();
+
+        $this->mock(DatabaseConnector::class)
+            ->shouldReceive('runReadOnly')
+            ->andReturn([
+                'colonnes' => ['n'],
+                'lignes' => [['n' => 3]],
+                'total' => 1,
+                'tronque' => false,
+                'instructions' => 3,
+            ]);
+
+        $this->postJson("/api/monitoring/databases/{$base->id}/query", [
+            'sql' => 'select 1; select 2; select 3',
+        ], $entetes)
+            ->assertOk()
+            ->assertJsonPath('instructions', 3);
+    }
 }

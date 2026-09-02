@@ -12,6 +12,17 @@ type Resultat = {
   total: number;
   tronque: boolean;
   duree_ms: number;
+
+  /**
+   * Combien d'instructions le texte contenait.
+   *
+   * Au-delà d'une, il faut le dire : Postgres les exécute toutes, mais le
+   * pilote ne rend que le dernier jeu de lignes. Trois `explain` collés
+   * ensemble s'exécutent donc tous les trois, on attend le total de leurs
+   * durées, et on ne voit que le plan du dernier en croyant l'avoir mesuré
+   * seul.
+   */
+  instructions?: number;
 };
 
 const EXEMPLE = `select indexname, indexdef
@@ -182,10 +193,19 @@ export default function SqlConsole({
             <div className="space-y-2">
               <p className="text-xs text-[var(--muted)]">
                 {resultat.total} ligne{resultat.total > 1 ? "s" : ""} en{" "}
-                {resultat.duree_ms} ms
+                {resultat.duree_ms.toLocaleString("fr-FR")} ms
                 {resultat.tronque &&
                   ` · ${resultat.lignes.length} affichées, le reste est coupé`}
               </p>
+
+              {(resultat.instructions ?? 1) > 1 && (
+                <p className="rounded-md border border-[var(--color-warning)]/40 bg-[var(--color-warning)]/5 px-3 py-2 text-xs text-[var(--color-warning)]">
+                  {resultat.instructions} instructions ont été exécutées, et la
+                  durée ci-dessus est celle de toutes. Le pilote ne rend que les
+                  lignes de la <strong className="font-medium">dernière</strong>{" "}
+                  — lance-les une par une pour voir les autres.
+                </p>
+              )}
 
               {resultat.lignes.length > 0 && (
                 <div className="overflow-x-auto rounded-md border border-[var(--border)]">
