@@ -67,11 +67,13 @@ export default function SqlConsole({
   const [enCours, setEnCours] = useState(false);
   const [resultat, setResultat] = useState<Resultat | null>(null);
   const [erreur, setErreur] = useState<string | null>(null);
+  const [indice, setIndice] = useState<string | null>(null);
 
   async function executer(e: FormEvent) {
     e.preventDefault();
     setEnCours(true);
     setErreur(null);
+    setIndice(null);
     setResultat(null);
 
     try {
@@ -86,6 +88,7 @@ export default function SqlConsole({
 
       if (!res.ok || !corps.ok) {
         setErreur(corps.error ?? corps.detail ?? `Échec (HTTP ${res.status}).`);
+        setIndice(corps.indice ?? null);
         return;
       }
 
@@ -126,7 +129,12 @@ export default function SqlConsole({
               className="mt-px shrink-0 text-[var(--color-success)]"
             />
             <span>
-              La transaction est ouverte{" "}
+              Cette console interroge la base{" "}
+              <strong className="font-medium text-[var(--foreground)]">
+                surveillée
+              </strong>{" "}
+              choisie ci-dessous — pas celle d&apos;Arche. La transaction est
+              ouverte{" "}
               <strong className="font-medium text-[var(--foreground)]">
                 read only
               </strong>{" "}
@@ -184,9 +192,16 @@ export default function SqlConsole({
           />
 
           {erreur && (
-            <p className="rounded-md border border-[var(--color-danger)]/40 bg-[var(--color-danger)]/5 px-3 py-2.5 font-mono text-xs text-[var(--color-danger)]">
-              {erreur}
-            </p>
+            <div className="space-y-2">
+              <p className="rounded-md border border-[var(--color-danger)]/40 bg-[var(--color-danger)]/5 px-3 py-2.5 font-mono text-xs text-[var(--color-danger)]">
+                {erreur}
+              </p>
+              {indice && (
+                <p className="rounded-md border border-[var(--color-info)]/40 bg-[var(--color-info)]/5 px-3 py-2.5 text-xs text-[var(--color-info)]">
+                  {indice}
+                </p>
+              )}
+            </div>
           )}
 
           {resultat && (

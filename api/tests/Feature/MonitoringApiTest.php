@@ -801,4 +801,56 @@ class MonitoringApiTest extends TestCase
             ->assertOk()
             ->assertJsonPath('instructions', 3);
     }
+
+    public function test_une_table_d_arche_cherchee_dans_la_base_surveillee_est_expliquee(): void
+    {
+        // C'est arrivé deux fois : la console est sous les yeux quand on lit un
+        // fichier qui vise l'autre base. Le message de Postgres est exact mais
+        // muet sur la cause.
+        [$user, $entetes] = $this->authenticate();
+        $this->accorder($user->id, Capability::MonitoringAdmin);
+        $base = $this->base();
+
+        $this->mock(DatabaseConnector::class)
+            ->shouldReceive('runReadOnly')
+            ->andThrow(new \RuntimeException(
+                'SQLSTATE[42P01]: Undefined table: 7 ERROR: relation '
+                .'"monitoring_probes" does not exist',
+            ));
+
+        $this->postJson("/api/monitoring/databases/{$base->id}/query", [
+            'sql' => 'select * from monitoring_probes',
+        ], $entetes)
+            ->assertStatus(422)
+            ->assertJsonPath('ok', false)
+            ->assertJsonPath(
+                'indice',
+                "« monitoring_probes » est une table d'Arche, pas de la base "
+                ."surveillée. Cette requête se lance dans l'éditeur SQL du "
+                ."Supabase d'Arche.",
+            );
+    }
+
+    public function test_une_table_vraiment_absente_ne_recoit_pas_de_faux_indice(): void
+    {
+        // Une table de la base surveillée qui n'existe pas est une faute de
+        // frappe ordinaire. Y accoler « c'est une table d'Arche » ferait
+        // chercher au mauvais endroit — l'inverse exact du but.
+        [$user, $entetes] = $this->authenticate();
+        $this->accorder($user->id, Capability::MonitoringAdmin);
+        $base = $this->base();
+
+        $this->mock(DatabaseConnector::class)
+            ->shouldReceive('runReadOnly')
+            ->andThrow(new \RuntimeException(
+                'SQLSTATE[42P01]: Undefined table: 7 ERROR: relation '
+                .'"airtel_log" does not exist',
+            ));
+
+        $this->postJson("/api/monitoring/databases/{$base->id}/query", [
+            'sql' => 'select * from airtel_log',
+        ], $entetes)
+            ->assertStatus(422)
+            ->assertJsonPath('indice', null);
+    }
 }

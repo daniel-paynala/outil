@@ -270,6 +270,7 @@ class DatabaseController extends Controller
             return response()->json([
                 'ok' => false,
                 'error' => $e->getMessage(),
+                'indice' => $this->indice($e->getMessage()),
             ], 422);
         }
 
@@ -278,6 +279,47 @@ class DatabaseController extends Controller
             ...$resultat,
             'duree_ms' => (int) round((microtime(true) - $debut) * 1000),
         ]);
+    }
+
+    /**
+     * Les tables d'Arche, qu'on cherche parfois dans la mauvaise base.
+     *
+     * La console interroge une base **surveillée**. Les tables d'Arche
+     * elle-même — sondes, comptes, droits — vivent dans son propre Supabase,
+     * et n'y sont pas. C'est arrivé deux fois : la console est sous les yeux
+     * quand on lit un fichier qui vise l'autre base.
+     *
+     * Le message de Postgres est exact mais muet sur la cause. On y ajoute la
+     * seule phrase qui fait gagner du temps.
+     *
+     * On ne va pas jusqu'à ouvrir la base d'Arche à la console : elle contient
+     * les messages, les courriers et les comptes de toute l'équipe. Le droit
+     * d'administrer la supervision permet de lire des bases de production
+     * métier ; il ne doit pas devenir celui de lire les conversations de ses
+     * collègues.
+     */
+    private const TABLES_ARCHE = [
+        'monitoring_probes', 'monitoring_probe_windows', 'monitoring_alerts',
+        'monitored_databases', 'monitoring_probe_viewers',
+        'user_capabilities', 'users', 'projects', 'activity_logs',
+        'notifications', 'messages', 'vault_entries',
+    ];
+
+    private function indice(string $erreur): ?string
+    {
+        if (! str_contains($erreur, '42P01')) {
+            return null;
+        }
+
+        foreach (self::TABLES_ARCHE as $table) {
+            if (str_contains($erreur, '"'.$table.'"')) {
+                return "« {$table} » est une table d'Arche, pas de la base "
+                    .'surveillée. Cette requête se lance dans l\'éditeur SQL du '
+                    .'Supabase d\'Arche.';
+            }
+        }
+
+        return null;
     }
 
     public function destroy(Request $request, MonitoredDatabase $database): JsonResponse
