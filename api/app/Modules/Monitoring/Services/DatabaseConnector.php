@@ -96,6 +96,64 @@ class DatabaseConnector
     }
 
     /**
+     * Exécute une requête libre et rend ses lignes.
+     *
+     * ## Ce qui rend ceci acceptable
+     *
+     * Rien n'est filtré dans le texte de la requête. Chercher des mots
+     * interdits — « drop », « delete », « update » — serait une passoire :
+     * `dElEtE`, `/*x*​/delete`, ou une fonction qui écrit passeraient tous. Ce
+     * qui protège est ailleurs et vient du serveur : la transaction est
+     * ouverte `read only`, Postgres refuse donc toute écriture quels que
+     * soient les droits du compte, et elle est annulée dans tous les cas.
+     *
+     * S'y ajoutent le `statement_timeout`, la connexion jetable, et le fait
+     * que le compte lui-même a été constaté incapable d'écrire à l'ajout de la
+     * base.
+     *
+     * ## Pourquoi `query()` et non `select()`
+     *
+     * Aucun paramètre n'est lié. En passant par une requête préparée, PDO
+     * analyserait le texte et prendrait l'opérateur jsonb `?` pour un
+     * marqueur — le même piège que les sondes doivent contourner. Ici on veut
+     * précisément pouvoir écrire `response ? 'error'` comme dans DBeaver.
+     *
+     * @return array{colonnes: array<int, string>, lignes: array<int, array<string, mixed>>, total: int, tronque: bool}
+     */
+    public function runReadOnly(
+        MonitoredDatabase $base,
+        string $sql,
+        ?int $timeoutMs = null,
+        int $limite = 200,
+    ): array {
+        return $this->on($base, function (Connection $cx) use ($sql, $limite) {
+            $releve = $cx->getPdo()->query($sql);
+            $brut = $releve === false ? [] : $releve->fetchAll(\PDO::FETCH_ASSOC);
+
+            $lignes = [];
+            foreach (array_slice($brut, 0, $limite) as $ligne) {
+                $lignes[] = array_map(
+                    // Une cellule peut contenir un document JSON entier. On la
+                    // coupe : la console sert à regarder, pas à exporter, et
+                    // une réponse de plusieurs mégaoctets traverserait mal une
+                    // connexion depuis Libreville.
+                    fn ($v) => is_string($v) && mb_strlen($v) > 500
+                        ? mb_substr($v, 0, 500).'…'
+                        : $v,
+                    (array) $ligne,
+                );
+            }
+
+            return [
+                'colonnes' => $lignes === [] ? [] : array_keys($lignes[0]),
+                'lignes' => $lignes,
+                'total' => count($brut),
+                'tronque' => count($brut) > $limite,
+            ];
+        }, $timeoutMs);
+    }
+
+    /**
      * Vérifie qu'on peut se connecter, et **qu'on ne peut pas écrire**.
      *
      * ## Pourquoi tenter l'écriture plutôt que faire confiance

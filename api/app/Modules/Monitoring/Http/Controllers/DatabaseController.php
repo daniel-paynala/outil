@@ -211,6 +211,75 @@ class DatabaseController extends Controller
         return response()->json($database->fresh());
     }
 
+    /**
+     * Une console SQL en lecture seule sur une base surveillée.
+     *
+     * ## Pourquoi ceci n'ouvre aucune porte nouvelle
+     *
+     * Qui peut administrer la supervision écrit déjà les requêtes des sondes et
+     * les exécute par le bouton « Essayer ». La console ne donne pas un accès
+     * de plus : elle rend visible ce qui était déjà possible, en affichant des
+     * lignes au lieu d'un seul nombre. Prétendre l'interdire pendant que
+     * `probes/try` reste ouvert serait une gêne, pas une protection.
+     *
+     * Ce qu'elle évite en revanche, c'est d'avoir à ouvrir DBeaver et à
+     * ressaisir des identifiants de production quelque part — donc à les
+     * sortir du coffre où ils sont chiffrés.
+     *
+     * ## Ce qui protège
+     *
+     * Rien dans le texte de la requête n'est filtré : la transaction est
+     * ouverte `read only` côté serveur, et Postgres refuse toute écriture quels
+     * que soient les droits. Voir `DatabaseConnector::runReadOnly`.
+     */
+    public function query(Request $request, MonitoredDatabase $database): JsonResponse
+    {
+        $data = $request->validate([
+            'sql' => ['required', 'string', 'max:8000'],
+            'timeout_ms' => ['sometimes', 'integer', 'between:1000,60000'],
+        ]);
+
+        if (! $database->isUsable()) {
+            return response()->json([
+                'error' => 'Base inutilisable',
+                'detail' => 'La lecture seule n\'a pas été constatée sur cette base.',
+            ], 422);
+        }
+
+        // Journalisé **avant** l'exécution, et sans attendre le résultat.
+        // Lire des données de production à la main est exactement ce qu'un
+        // registre d'audit existe pour retenir — y compris quand la requête
+        // échoue, parce qu'une tentative dit autant qu'un succès.
+        $this->activity->logGlobal(
+            $this->userId($request),
+            'monitoring.database.queried',
+            $database,
+            $database->name,
+            ['sql' => $data['sql']],
+        );
+
+        $debut = microtime(true);
+
+        try {
+            $resultat = $this->connector->runReadOnly(
+                $database,
+                $data['sql'],
+                $data['timeout_ms'] ?? null,
+            );
+        } catch (\Throwable $e) {
+            return response()->json([
+                'ok' => false,
+                'error' => $e->getMessage(),
+            ], 422);
+        }
+
+        return response()->json([
+            'ok' => true,
+            ...$resultat,
+            'duree_ms' => (int) round((microtime(true) - $debut) * 1000),
+        ]);
+    }
+
     public function destroy(Request $request, MonitoredDatabase $database): JsonResponse
     {
         // Journalisé **avant** la suppression : après, la ligne n'existe plus

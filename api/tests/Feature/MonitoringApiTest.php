@@ -649,4 +649,111 @@ class MonitoringApiTest extends TestCase
 
         $this->assertSame([], $sonde->viewers()->pluck('users.id')->all());
     }
+
+    // ── La console SQL ──────────────────────────────────────────────────
+
+    public function test_consulter_ne_donne_pas_la_console(): void
+    {
+        // Voir qu'une base va mal et pouvoir y lancer une requête libre ne
+        // demandent pas la même confiance.
+        [$user, $entetes] = $this->authenticate();
+        $this->accorder($user->id, Capability::Monitoring);
+        $base = $this->base();
+
+        $this->postJson("/api/monitoring/databases/{$base->id}/query", [
+            'sql' => 'select 1',
+        ], $entetes)->assertNotFound();
+    }
+
+    public function test_la_console_rend_les_lignes(): void
+    {
+        [$user, $entetes] = $this->authenticate();
+        $this->accorder($user->id, Capability::MonitoringAdmin);
+        $base = $this->base();
+
+        $this->mock(DatabaseConnector::class)
+            ->shouldReceive('runReadOnly')
+            ->once()
+            ->andReturn([
+                'colonnes' => ['indexname'],
+                'lignes' => [['indexname' => 'airtel_logs_pkey']],
+                'total' => 1,
+                'tronque' => false,
+            ]);
+
+        $this->postJson("/api/monitoring/databases/{$base->id}/query", [
+            'sql' => 'select indexname from pg_indexes',
+        ], $entetes)
+            ->assertOk()
+            ->assertJsonPath('ok', true)
+            ->assertJsonPath('lignes.0.indexname', 'airtel_logs_pkey')
+            ->assertJsonStructure(['colonnes', 'lignes', 'total', 'tronque', 'duree_ms']);
+    }
+
+    public function test_chaque_requete_de_console_est_journalisee(): void
+    {
+        // Lire des données de production à la main est exactement ce qu'un
+        // registre d'audit existe pour retenir.
+        [$user, $entetes] = $this->authenticate();
+        $this->accorder($user->id, Capability::MonitoringAdmin);
+        $base = $this->base();
+
+        $this->mock(DatabaseConnector::class)
+            ->shouldReceive('runReadOnly')
+            ->andReturn(['colonnes' => [], 'lignes' => [], 'total' => 0, 'tronque' => false]);
+
+        $this->postJson("/api/monitoring/databases/{$base->id}/query", [
+            'sql' => 'select count(*) from payment',
+        ], $entetes)->assertOk();
+
+        $trace = DB::table('activity_logs')
+            ->where('action', 'monitoring.database.queried')
+            ->first();
+
+        $this->assertSame($user->id, $trace->actor_id);
+        $this->assertSame(
+            'select count(*) from payment',
+            json_decode($trace->metadata, true)['sql'],
+        );
+    }
+
+    public function test_une_requete_en_echec_laisse_quand_meme_sa_trace(): void
+    {
+        // Une tentative dit autant qu'un succès : la trace est écrite avant
+        // l'exécution, pas après.
+        [$user, $entetes] = $this->authenticate();
+        $this->accorder($user->id, Capability::MonitoringAdmin);
+        $base = $this->base();
+
+        $this->mock(DatabaseConnector::class)
+            ->shouldReceive('runReadOnly')
+            ->andThrow(new \RuntimeException('SQLSTATE[42601]: syntax error'));
+
+        $this->postJson("/api/monitoring/databases/{$base->id}/query", [
+            'sql' => 'selct 1',
+        ], $entetes)
+            ->assertStatus(422)
+            ->assertJsonPath('ok', false);
+
+        $this->assertDatabaseHas('activity_logs', [
+            'action' => 'monitoring.database.queried',
+        ]);
+    }
+
+    public function test_la_console_refuse_une_base_non_verifiee(): void
+    {
+        // Une base dont la lecture seule n'est plus constatée est inerte : on
+        // ne lui envoie rien, pas même une lecture.
+        [$user, $entetes] = $this->authenticate();
+        $this->accorder($user->id, Capability::MonitoringAdmin);
+        $base = $this->base();
+        $base->update(['read_only_verified_at' => null]);
+
+        $this->mock(DatabaseConnector::class)
+            ->shouldNotReceive('runReadOnly');
+
+        $this->postJson("/api/monitoring/databases/{$base->id}/query", [
+            'sql' => 'select 1',
+        ], $entetes)->assertStatus(422);
+    }
 }

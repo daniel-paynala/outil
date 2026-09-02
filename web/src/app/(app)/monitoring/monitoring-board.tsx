@@ -43,6 +43,7 @@ import {
 
 import { INFOBULLE_MODE } from "./modes";
 import DatabaseDrawer from "./database-drawer";
+import SqlConsole from "./sql-console";
 import ProbeDrawer from "./probe-drawer";
 
 /**
@@ -244,6 +245,8 @@ export default function MonitoringBoard({
           onAdd={() => setBaseOuverte("nouvelle")}
           onEdit={(base) => setBaseOuverte(base)}
         />
+
+        {canAdmin && <SqlConsole databases={databases} />}
 
         <AlertHistory alerts={alerts} />
 

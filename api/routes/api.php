@@ -301,6 +301,10 @@ Route::middleware('supabase.auth')->group(function () {
         Route::post('databases', [DatabaseController::class, 'store']);
         Route::patch('databases/{database}', [DatabaseController::class, 'update']);
         Route::post('databases/{database}/verify', [DatabaseController::class, 'verify']);
+
+        // La console. Réservée à qui administre la supervision : elle ne donne
+        // rien de plus que `probes/try`, qui l'est déjà.
+        Route::post('databases/{database}/query', [DatabaseController::class, 'query']);
         Route::delete('databases/{database}', [DatabaseController::class, 'destroy']);
 
         Route::post('probes', [ProbeController::class, 'store']);

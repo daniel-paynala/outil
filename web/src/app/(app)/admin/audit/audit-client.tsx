@@ -17,6 +17,7 @@ import {
   CheckCheck,
   Radar,
   Database as DatabaseIcon,
+  Terminal as TerminalIcon,
 } from "lucide-react";
 import { clsx } from "clsx";
 import { apiFetch } from "@/lib/api/client";
@@ -258,7 +259,10 @@ function describeAction(action: string): {
   label: string;
   color: string;
 } {
-  const map: Record<string, { Icon: typeof Activity; label: string; color: string }> = {
+  const map: Record<
+    string,
+    { Icon: typeof Activity; label: string; color: string }
+  > = {
     "admin.user.invited": {
       Icon: UserPlus,
       label: "a invité",
@@ -353,6 +357,11 @@ function describeAction(action: string): {
       Icon: Radar,
       label: "a supprimé la sonde",
       color: "var(--color-danger)",
+    },
+    "monitoring.database.queried": {
+      Icon: TerminalIcon,
+      label: "a interrogé la base",
+      color: "var(--color-warning)",
     },
     "monitoring.probe.acknowledged": {
       Icon: CheckCheck,
