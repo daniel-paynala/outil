@@ -7,6 +7,7 @@ import { Play, Plus, Trash2 } from "lucide-react";
 import { apiFetch } from "@/lib/api/client";
 import { useToast } from "@/core/toast/toast-context";
 import type {
+  Direction,
   MonitoredDatabase,
   Probe,
   WindowMode,
@@ -18,6 +19,7 @@ import Drawer from "./drawer";
 type WindowDraft = {
   hours: number;
   mode: WindowMode;
+  direction: Direction;
 
   /**
    * Saisi tel quel : « 3, 10, 20 ».
@@ -30,8 +32,18 @@ type WindowDraft = {
 };
 
 const FENETRES_PAR_DEFAUT: WindowDraft[] = [
-  { hours: 24, mode: "glissante", tiers: "3, 10, 20, 40, 60, 100" },
-  { hours: 48, mode: "glissante", tiers: "10, 40, 100" },
+  {
+    hours: 24,
+    mode: "glissante",
+    direction: "croissant",
+    tiers: "3, 10, 20, 40, 60, 100",
+  },
+  {
+    hours: 48,
+    mode: "glissante",
+    direction: "croissant",
+    tiers: "10, 40, 100",
+  },
 ];
 
 const EXEMPLE = `select count(*) as valeur
@@ -83,6 +95,7 @@ export default function ProbeDrawer({
       ? probe.windows.map((f) => ({
           hours: f.hours,
           mode: f.mode ?? "glissante",
+          direction: f.direction ?? "croissant",
           tiers: f.tiers.join(", "),
         }))
       : FENETRES_PAR_DEFAUT,
@@ -158,6 +171,7 @@ export default function ProbeDrawer({
             windows: fenetres.map((f) => ({
               hours: f.hours,
               mode: f.mode,
+              direction: f.direction,
               tiers: paliers(f.tiers),
             })),
           }),
@@ -204,6 +218,7 @@ export default function ProbeDrawer({
 
   return (
     <Drawer
+      large
       title={probe ? "Modifier la sonde" : "Nouvelle sonde"}
       onClose={onClose}
     >
@@ -336,7 +351,12 @@ export default function ProbeDrawer({
                   onClick={() =>
                     setFenetres((f) => [
                       ...f,
-                      { hours: 24, mode: "glissante", tiers: "" },
+                      {
+                        hours: 24,
+                        mode: "glissante",
+                        direction: "croissant",
+                        tiers: "",
+                      },
                     ])
                   }
                   className="inline-flex items-center gap-1 text-xs text-[var(--color-brand-red)] hover:underline"
@@ -355,15 +375,16 @@ export default function ProbeDrawer({
                 trois cases nues dont on ne devinait pas le rôle.
               */}
               <div className="flex items-center gap-2 text-[11px] uppercase tracking-wider text-[var(--muted)]">
-                <span className="w-24 shrink-0">Durée</span>
-                <span className="w-36 shrink-0">Découpage</span>
-                <span className="flex-1">Paliers</span>
+                <span className="w-20 shrink-0">Durée</span>
+                <span className="w-32 shrink-0">Découpage</span>
+                <span className="w-28 shrink-0">Alerte si</span>
+                <span className="flex-1">Seuils</span>
                 {fenetres.length > 1 && <span className="w-8 shrink-0" />}
               </div>
 
               {fenetres.map((fenetre, i) => (
-                <div key={i} className="flex items-start gap-2">
-                  <div className="flex w-24 shrink-0 items-center gap-1.5">
+                <div key={i} className="flex flex-wrap items-start gap-2">
+                  <div className="flex w-20 shrink-0 items-center gap-1.5">
                     <input
                       type="number"
                       min={1}
@@ -394,7 +415,7 @@ export default function ProbeDrawer({
                     <span className="text-xs text-[var(--muted)]">h</span>
                   </div>
 
-                  <div className="w-36 shrink-0">
+                  <div className="w-32 shrink-0">
                     <select
                       value={fenetre.mode}
                       aria-label="Découpage de la fenêtre"
@@ -424,10 +445,35 @@ export default function ProbeDrawer({
                     </select>
                   </div>
 
-                  <div className="min-w-0 flex-1">
+                  <div className="w-28 shrink-0">
+                    <select
+                      value={fenetre.direction}
+                      aria-label="Sens de dégradation"
+                      onChange={(e) =>
+                        setFenetres((f) =>
+                          f.map((w, j) =>
+                            j === i
+                              ? { ...w, direction: e.target.value as Direction }
+                              : w,
+                          ),
+                        )
+                      }
+                      title={
+                        fenetre.direction === "croissant"
+                          ? "Le danger est en haut : un compte d'erreurs qui grimpe"
+                          : "Le danger est en bas : une mesure de santé qui s'effondre"
+                      }
+                      className={inputClass}
+                    >
+                      <option value="croissant">ça monte</option>
+                      <option value="decroissant">ça descend</option>
+                    </select>
+                  </div>
+
+                  <div className="min-w-[12rem] flex-1">
                     <input
                       value={fenetre.tiers}
-                      aria-label="Paliers de notification"
+                      aria-label="Seuils de notification"
                       onChange={(e) =>
                         setFenetres((f) =>
                           f.map((w, j) =>

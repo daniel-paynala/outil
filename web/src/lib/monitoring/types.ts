@@ -46,19 +46,37 @@ export type MonitoredDatabase = {
  */
 export type WindowMode = "glissante" | "calendaire";
 
+/**
+ * Dans quel sens la fenêtre se dégrade.
+ *
+ * `croissant` — le danger est en haut : un compte d'erreurs qui grimpe. C'est
+ * le cas de presque toutes les sondes, et le défaut.
+ *
+ * `decroissant` — le danger est en bas : une mesure de santé qui s'effondre.
+ * Une sonde de paiements réussis réglée en croissant préviendrait quand la
+ * journée est bonne, et se tairait quand la production tombe à zéro.
+ *
+ * « Le plus grave » s'inverse avec le sens : en croissant c'est le palier le
+ * plus haut franchi, en décroissant le plus bas — tomber sous 20 est pire que
+ * tomber sous 100.
+ */
+export type Direction = "croissant" | "decroissant";
+
 export type ProbeWindow = {
   id?: string;
   hours: number;
   mode?: WindowMode;
+  direction?: Direction;
 
   /** Croissants. Vide = on observe sans alerter. */
   tiers: number[];
 
   /**
-   * Le plus haut palier franchi depuis le dernier acquittement.
-   * Au-dessus de zéro, un incident attend un geste.
+   * Le palier le plus **grave** signalé depuis le dernier acquittement : le
+   * plus haut en croissant, le plus bas en décroissant. Zéro veut dire aucun,
+   * ce qu'aucun palier réel ne peut valoir.
    */
-  highest_tier: number;
+  severest_tier: number;
 
   last_value: number | null;
   last_run_at: string | null;
@@ -135,10 +153,26 @@ export function pire(a: Level, b: Level): Level {
  * « Le premier palier » est la seule formulation qui vaille pour les deux.
  */
 export function windowLevel(w: ProbeWindow): Level {
-  if (w.highest_tier <= 0) return "calme";
+  if (w.severest_tier <= 0) return "calme";
   if (w.tiers.length === 0) return "aggrave";
 
-  return w.highest_tier === w.tiers[0] ? "premier" : "aggrave";
+  return w.severest_tier === firstTier(w) ? "premier" : "aggrave";
+}
+
+/**
+ * Le palier le moins grave — celui qu'on franchit en premier.
+ *
+ * En croissant c'est le plus petit, en décroissant le plus grand. C'est lui qui
+ * distingue l'orange du rouge : le prendre toujours en bas rendrait une sonde
+ * décroissante rouge dès son premier franchissement, et l'orange ne servirait
+ * jamais.
+ */
+function firstTier(w: ProbeWindow): number | undefined {
+  if (w.tiers.length === 0) return undefined;
+
+  return w.direction === "decroissant"
+    ? w.tiers[w.tiers.length - 1]
+    : w.tiers[0];
 }
 
 /**
@@ -177,14 +211,30 @@ export const LIBELLE_NIVEAU: Record<Level, string> = {
  * doit pas se refermer tout seul.
  */
 export function hasIncident(probe: Probe): boolean {
-  return probe.windows.some((w) => w.highest_tier > 0);
+  return probe.windows.some((w) => w.severest_tier > 0);
 }
 
-/** Ce qui reste avant le prochain palier, pour voir venir plutôt que subir. */
+/**
+ * Le prochain seuil à franchir, pour voir venir plutôt que subir.
+ *
+ * En décroissant, « le prochain » est le plus haut palier strictement sous la
+ * valeur courante : à 45, avec 20/50/100, le suivant est 20.
+ */
 export function nextTier(window: ProbeWindow): number | null {
   const valeur = window.last_value ?? 0;
 
+  if (window.direction === "decroissant") {
+    const dessous = window.tiers.filter((t) => t < valeur);
+
+    return dessous.length ? Math.max(...dessous) : null;
+  }
+
   return window.tiers.find((t) => t > valeur) ?? null;
+}
+
+/** « palier » ou « plancher » — le mot change avec le sens. */
+export function seuilLabel(w: ProbeWindow): string {
+  return w.direction === "decroissant" ? "plancher" : "palier";
 }
 
 /**
@@ -194,7 +244,7 @@ export function nextTier(window: ProbeWindow): number | null {
  * 3, parce qu'on ouvre cet écran dans l'urgence et qu'on lit du haut.
  */
 export function severity(probe: Probe): number {
-  return probe.windows.reduce((max, w) => Math.max(max, w.highest_tier), 0);
+  return probe.windows.reduce((max, w) => Math.max(max, w.severest_tier), 0);
 }
 
 /**

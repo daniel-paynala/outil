@@ -9,6 +9,8 @@ use App\Modules\Monitoring\Models\MonitoringProbeWindow;
 use App\Modules\Monitoring\Services\DatabaseConnector;
 use App\Modules\Monitoring\Services\ProbeRunner;
 use App\Modules\Monitoring\Support\Capability;
+use App\Modules\Monitoring\Support\Direction;
+use App\Modules\Monitoring\Support\Tiers;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
@@ -109,7 +111,7 @@ class MonitoringRunnerTest extends TestCase
         $this->tourner(2);
 
         $this->assertSame([], $this->alertes());
-        $this->assertSame(0, $this->fenetre->highest_tier);
+        $this->assertSame(0, $this->fenetre->severest_tier);
     }
 
     public function test_le_franchissement_est_consigne(): void
@@ -117,7 +119,7 @@ class MonitoringRunnerTest extends TestCase
         $this->tourner(5);
 
         $this->assertSame([3], $this->alertes());
-        $this->assertSame(3, $this->fenetre->highest_tier);
+        $this->assertSame(3, $this->fenetre->severest_tier);
         $this->assertSame(5, $this->fenetre->last_value);
     }
 
@@ -160,7 +162,7 @@ class MonitoringRunnerTest extends TestCase
             'counting_from' => now(),
             'acknowledged_by' => null,
         ]);
-        $this->fenetre->update(['highest_tier' => 0]);
+        $this->fenetre->update(['severest_tier' => 0]);
 
         $this->tourner(4);
 
@@ -318,11 +320,11 @@ class MonitoringRunnerTest extends TestCase
 
         $this->fenetre->update(['mode' => 'glissante']);
         $this->tourner(4);
-        $this->assertSame(3, $this->fenetre->highest_tier);
+        $this->assertSame(3, $this->fenetre->severest_tier);
 
-        $this->fenetre->update(['mode' => 'calendaire', 'highest_tier' => 0]);
+        $this->fenetre->update(['mode' => 'calendaire', 'severest_tier' => 0]);
         $this->tourner(2);
-        $this->assertSame(0, $this->fenetre->fresh()->highest_tier);
+        $this->assertSame(0, $this->fenetre->fresh()->severest_tier);
     }
 
     public function test_une_fenetre_calendaire_de_six_heures_est_refusee(): void
@@ -353,5 +355,135 @@ class MonitoringRunnerTest extends TestCase
         // les pieds de qui a réglé leurs paliers.
         $this->assertSame('glissante', $this->fenetre->mode);
         $this->assertFalse($this->fenetre->isCalendar());
+    }
+
+    // ── Le sens : le danger en haut, ou en bas ──────────────────────────
+
+    public function test_le_sens_par_defaut_reste_croissant(): void
+    {
+        // Toutes les sondes existantes comptent des choses qui ne devraient pas
+        // arriver. Une fenêtre déjà réglée ne doit pas changer de sens sous les
+        // pieds de qui a posé ses paliers.
+        $this->assertSame(Direction::Croissant, $this->fenetre->direction());
+    }
+
+    public function test_en_decroissant_le_plus_grave_est_le_plus_bas(): void
+    {
+        // Tomber sous 20 est pire que tomber sous 100 — l'inverse exact du
+        // sens croissant, et toute la logique de signalement en dépend.
+        $paliers = [20, 50, 100];
+        $bas = Direction::Decroissant;
+
+        $this->assertSame(100, Tiers::reached(90, $paliers, $bas));
+        $this->assertSame(50, Tiers::reached(45, $paliers, $bas));
+        $this->assertSame(20, Tiers::reached(3, $paliers, $bas));
+        $this->assertSame(0, Tiers::reached(140, $paliers, $bas));
+    }
+
+    public function test_une_production_qui_s_effondre_alerte_a_chaque_palier(): void
+    {
+        // Le cas qui a motivé tout ceci. En croissant, cette même séquence ne
+        // produisait qu'une notification — à 140, quand tout allait bien.
+        $this->fenetre->update([
+            'direction' => 'decroissant',
+            'tiers' => [20, 50, 100],
+        ]);
+
+        $this->tourner(140, 120, 95, 45, 15);
+
+        $this->assertSame([100, 50, 20], $this->alertes());
+    }
+
+    public function test_en_decroissant_une_remontee_ne_reparle_pas(): void
+    {
+        // Même règle qu'en croissant : on ne signale qu'un palier strictement
+        // plus grave. Sans elle, 55 → 45 → 55 → 45 produirait deux alertes
+        // pour un seul incident.
+        $this->fenetre->update([
+            'direction' => 'decroissant',
+            'tiers' => [20, 50, 100],
+        ]);
+
+        $this->tourner(45, 90, 45, 60, 45);
+
+        $this->assertCount(1, $this->alertes());
+    }
+
+    public function test_en_decroissant_les_paliers_intermediaires_sont_sautes(): void
+    {
+        // Passer de 140 à 3 d'un coup signale le plancher 20, pas 100 puis 50
+        // puis 20 : trois notifications simultanées disent moins qu'une seule
+        // qui annonce le bon chiffre.
+        $this->fenetre->update([
+            'direction' => 'decroissant',
+            'tiers' => [20, 50, 100],
+        ]);
+
+        $this->tourner(140, 3);
+
+        $this->assertSame([20], $this->alertes());
+    }
+
+    public function test_zero_est_signale_et_non_ignore(): void
+    {
+        // Zéro veut dire « aucun palier atteint » dans le stockage, mais une
+        // valeur de zéro est le pire cas possible d'une sonde décroissante :
+        // plus rien n'arrive. Confondre les deux ferait taire la sonde au
+        // moment exact où elle doit parler.
+        $this->fenetre->update([
+            'direction' => 'decroissant',
+            'tiers' => [20, 50, 100],
+        ]);
+
+        $this->tourner(0);
+
+        $this->assertSame([20], $this->alertes());
+        $this->assertSame(20, $this->fenetre->fresh()->severest_tier);
+    }
+
+    public function test_la_notification_dit_plancher_et_non_palier(): void
+    {
+        // « palier 50 » à quelqu'un dont la production vient de s'effondrer se
+        // comprend à l'envers.
+        $this->fenetre->update([
+            'direction' => 'decroissant',
+            'tiers' => [50],
+        ]);
+        [$user] = $this->authenticate();
+        DB::table('user_capabilities')->insert([
+            'user_id' => $user->id,
+            'capability' => Capability::Monitoring->value,
+            'granted_at' => now(),
+        ]);
+
+        $this->tourner(45);
+
+        $notification = DB::table('notifications')
+            ->where('type', 'monitoring.alert')
+            ->first();
+
+        $this->assertStringContainsString('plancher 50', $notification->body);
+        $this->assertStringNotContainsString('palier', $notification->body);
+    }
+
+    public function test_le_premier_palier_franchi_depend_du_sens(): void
+    {
+        // Sert à l'affichage : c'est lui qui distingue l'orange du rouge.
+        $paliers = [20, 50, 100];
+
+        $this->assertSame(20, Tiers::first($paliers, Direction::Croissant));
+        $this->assertSame(100, Tiers::first($paliers, Direction::Decroissant));
+    }
+
+    public function test_le_prochain_seuil_depend_du_sens(): void
+    {
+        // « Encore 5 avant 50 » en croissant ; « encore 5 avant de tomber sous
+        // 50 » en décroissant. Dans les deux cas on voit venir.
+        $paliers = [20, 50, 100];
+
+        $this->assertSame(50, Tiers::next(45, $paliers, Direction::Croissant));
+        $this->assertSame(20, Tiers::next(45, $paliers, Direction::Decroissant));
+        $this->assertNull(Tiers::next(140, $paliers, Direction::Croissant));
+        $this->assertNull(Tiers::next(3, $paliers, Direction::Decroissant));
     }
 }

@@ -31,6 +31,7 @@ import {
   type Level,
   hasIncident,
   nextTier,
+  seuilLabel,
   severity,
   type MonitoredDatabase,
   type MonitoringAlert,
@@ -395,8 +396,9 @@ function WindowCell({
   const maintenant = useHorloge();
   const valeur = fenetre.last_value;
   const suivant = nextTier(fenetre);
-  const franchi = fenetre.highest_tier > 0;
+  const franchi = fenetre.severest_tier > 0;
   const niveau = windowLevel(fenetre);
+  const seuil = seuilLabel(fenetre);
 
   return (
     <div className="bg-[var(--background)] px-4 py-3">
@@ -423,9 +425,9 @@ function WindowCell({
       </p>
       <p className="mt-1 text-xs text-[var(--muted)]">
         {franchi
-          ? `palier ${fenetre.highest_tier} franchi`
+          ? `${seuil} ${fenetre.severest_tier} franchi`
           : suivant !== null
-            ? `prochain palier ${suivant}`
+            ? `prochain ${seuil} ${suivant}`
             : fenetre.tiers.length === 0
               ? "observée, sans palier"
               : "au-delà du dernier palier"}

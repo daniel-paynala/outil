@@ -11,10 +11,19 @@ import { useEffect, type ReactNode } from "react";
  */
 export default function Drawer({
   title,
+  large = false,
   onClose,
   children,
 }: {
   title: string;
+  /**
+   * Pour les formulaires à plusieurs colonnes.
+   *
+   * L'éditeur de sonde aligne durée, découpage, sens et seuils sur une même
+   * ligne : dans la largeur ordinaire, le dernier champ se retrouve écrasé et
+   * une liste de six seuils n'y tient plus.
+   */
+  large?: boolean;
   onClose: () => void;
   children: ReactNode;
 }) {
@@ -40,7 +49,9 @@ export default function Drawer({
         role="dialog"
         aria-modal="true"
         aria-label={title}
-        className="flex w-full max-w-xl flex-col border-l border-[var(--border)] bg-[var(--background)] shadow-2xl"
+        className={`flex w-full flex-col border-l border-[var(--border)] bg-[var(--background)] shadow-2xl ${
+          large ? "max-w-3xl" : "max-w-xl"
+        }`}
       >
         <header className="flex items-center border-b border-[var(--border)] px-6 py-4">
           <h3 className="flex-1 text-sm font-medium">{title}</h3>

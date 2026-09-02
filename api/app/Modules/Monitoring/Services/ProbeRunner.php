@@ -73,7 +73,8 @@ class ProbeRunner
             $palier = Tiers::toRaise(
                 $valeur,
                 $fenetre->sortedTiers(),
-                $fenetre->highest_tier,
+                $fenetre->severest_tier,
+                $fenetre->direction(),
             );
 
             $fenetre->update([
@@ -81,7 +82,7 @@ class ProbeRunner
                 'last_run_at' => now(),
                 // Mis à jour **avant** la notification : si l'envoi échoue, on
                 // préfère une alerte perdue à une alerte répétée à chaque tour.
-                'highest_tier' => $palier ?? $fenetre->highest_tier,
+                'severest_tier' => $palier ?? $fenetre->severest_tier,
             ]);
 
             if ($palier === null) {
@@ -175,8 +176,14 @@ class ProbeRunner
         ]);
 
         $titre = "{$sonde->database->name} — {$sonde->title}";
+
+        // « palier 10 » décrit un seuil qu'on dépasse, « plancher 50 » un seuil
+        // sous lequel on tombe. Employer le même mot pour les deux ferait lire
+        // « palier 50 » à quelqu'un dont la production vient de s'effondrer, et
+        // il comprendrait l'inverse.
+        $seuil = $fenetre->direction()->label();
         $corps = "{$valeur} {$sonde->unit} sur {$fenetre->hours} h "
-            ."(palier {$palier}).";
+            ."({$seuil} {$palier}).";
 
         foreach ($this->destinataires() as $userId) {
             $this->notify->forUser(

@@ -52,6 +52,6 @@ class MonitoringProbe extends Model
      */
     public function hasOpenIncident(): bool
     {
-        return $this->windows->contains(fn ($w) => $w->highest_tier > 0);
+        return $this->windows->contains(fn ($w) => $w->severest_tier > 0);
     }
 }

@@ -2,6 +2,7 @@
 
 namespace App\Modules\Monitoring\Models;
 
+use App\Modules\Monitoring\Support\Direction;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -16,7 +17,8 @@ class MonitoringProbeWindow extends Model
     public $timestamps = false;
 
     protected $fillable = [
-        'probe_id', 'hours', 'mode', 'tiers', 'highest_tier', 'last_value', 'last_run_at',
+        'probe_id', 'hours', 'mode', 'direction', 'tiers',
+        'severest_tier', 'last_value', 'last_run_at',
     ];
 
     /**
@@ -26,7 +28,19 @@ class MonitoringProbeWindow extends Model
      * mémoire jusqu'au premier `fresh()` — et le code qui lit `mode` juste
      * après la création verrait une valeur que la base n'a jamais eue.
      */
-    protected $attributes = ['mode' => 'glissante'];
+    protected $attributes = [
+        'mode' => 'glissante',
+        // Le sens par défaut est celui de toutes les sondes existantes : le
+        // danger est en haut. Une fenêtre déjà réglée ne doit pas changer de
+        // sens sous les pieds de qui a posé ses paliers.
+        'direction' => 'croissant',
+    ];
+
+    /** Dans quel sens cette fenêtre se dégrade. */
+    public function direction(): Direction
+    {
+        return Direction::tryFrom($this->direction ?? '') ?? Direction::Croissant;
+    }
 
     /**
      * Une journée calendaire ne se découpe qu'en journées entières.
@@ -46,7 +60,7 @@ class MonitoringProbeWindow extends Model
         return [
             'tiers' => 'array',
             'hours' => 'integer',
-            'highest_tier' => 'integer',
+            'severest_tier' => 'integer',
             'last_value' => 'integer',
             'last_run_at' => 'datetime',
         ];

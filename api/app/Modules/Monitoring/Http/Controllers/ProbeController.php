@@ -174,9 +174,9 @@ class ProbeController extends Controller
     public function acknowledge(Request $request, MonitoringProbe $probe): JsonResponse
     {
         $paliersAcquittes = $probe->windows()
-            ->where('highest_tier', '>', 0)
+            ->where('severest_tier', '>', 0)
             ->get()
-            ->mapWithKeys(fn ($f) => ["{$f->hours}h" => $f->highest_tier])
+            ->mapWithKeys(fn ($f) => ["{$f->hours}h" => $f->severest_tier])
             ->all();
 
         $probe->update([
@@ -186,7 +186,7 @@ class ProbeController extends Controller
 
         // Les paliers se rouvrent tous : un nouveau franchissement doit se
         // signaler, même plus bas que celui qu'on vient de traiter.
-        $probe->windows()->update(['highest_tier' => 0]);
+        $probe->windows()->update(['severest_tier' => 0]);
 
         // Acquitter est une décision, pas une manipulation : quelqu'un déclare
         // que l'incident est traité et fait repartir le comptage. Les valeurs
@@ -231,6 +231,7 @@ class ProbeController extends Controller
             'windows' => ['required', 'array', 'min:1', 'max:4'],
             'windows.*.hours' => ['required', 'integer', 'between:1,720'],
             'windows.*.mode' => ['sometimes', 'in:glissante,calendaire'],
+            'windows.*.direction' => ['sometimes', 'in:croissant,decroissant'],
             'windows.*.tiers' => ['present', 'array', 'max:12'],
             'windows.*.tiers.*' => ['integer', 'min:1'],
         ];
@@ -253,7 +254,11 @@ class ProbeController extends Controller
         return $donnees;
     }
 
-    /** @param  array<int, array{hours: int, mode?: string, tiers: array<int, int>}>  $fenetres */
+    /**
+     * @param  array<int, array{
+     *     hours: int, mode?: string, direction?: string, tiers: array<int, int>
+     * }>  $fenetres
+     */
     private function remplacerFenetres(MonitoringProbe $sonde, array $fenetres): void
     {
         $sonde->windows()->delete();
@@ -267,6 +272,7 @@ class ProbeController extends Controller
                 'probe_id' => $sonde->id,
                 'hours' => $fenetre['hours'],
                 'mode' => $fenetre['mode'] ?? 'glissante',
+                'direction' => $fenetre['direction'] ?? 'croissant',
                 'tiers' => $paliers,
             ]);
         }

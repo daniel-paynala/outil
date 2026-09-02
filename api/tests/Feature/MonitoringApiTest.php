@@ -58,7 +58,7 @@ class MonitoringApiTest extends TestCase
             'probe_id' => $sonde->id,
             'hours' => 24,
             'tiers' => [3, 10],
-            'highest_tier' => 10,
+            'severest_tier' => 10,
         ]);
 
         return $sonde;
@@ -156,7 +156,7 @@ class MonitoringApiTest extends TestCase
 
         $this->postJson("/api/monitoring/probes/{$sonde->id}/acknowledge", [], $entetes);
 
-        $this->assertSame(0, $sonde->windows()->first()->highest_tier);
+        $this->assertSame(0, $sonde->windows()->first()->severest_tier);
     }
 
     public function test_acquitter_est_ouvert_a_qui_consulte(): void
@@ -224,7 +224,7 @@ class MonitoringApiTest extends TestCase
             'windows' => [['hours' => 24, 'tiers' => [5, 50]]],
         ], $entetes)->assertOk();
 
-        $this->assertSame(0, $sonde->windows()->first()->highest_tier);
+        $this->assertSame(0, $sonde->windows()->first()->severest_tier);
     }
 
     public function test_essayer_une_requete_sur_une_base_non_verifiee_est_refuse(): void
@@ -275,7 +275,7 @@ class MonitoringApiTest extends TestCase
         ], $entetes)->assertOk();
 
         $this->assertDatabaseHas('monitoring_probes', ['id' => $sonde->id]);
-        $this->assertSame(10, $sonde->windows()->first()->highest_tier);
+        $this->assertSame(10, $sonde->windows()->first()->severest_tier);
     }
 
     public function test_changer_le_mot_de_passe_repasse_par_la_verification(): void

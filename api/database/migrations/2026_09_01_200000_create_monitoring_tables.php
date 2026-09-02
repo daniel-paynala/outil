@@ -64,8 +64,12 @@ return new class extends Migration
             // 'calendaire' — depuis minuit, heure de Libreville.
             $table->string('mode', 16)->default('glissante');
 
+            // 'croissant' — le danger est en haut (des erreurs qui grimpent).
+            // 'decroissant' — le danger est en bas (une santé qui s'effondre).
+            $table->string('direction', 16)->default('croissant');
+
             $table->json('tiers');
-            $table->integer('highest_tier')->default(0);
+            $table->integer('severest_tier')->default(0);
             $table->integer('last_value')->nullable();
             $table->timestamp('last_run_at')->nullable();
 
