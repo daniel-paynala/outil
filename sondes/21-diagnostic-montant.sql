@@ -1,3 +1,8 @@
+-- ╔═══════════════════════════════════════════════════════════════════╗
+-- ║  BASE : PAYNALA  —  la base surveillée, pas celle d'Arche         ║
+-- ║  Tables : payment, merchant, airtel_logs, subscription…           ║
+-- ║  Où : console SQL d'Arche (Supervision), ou DBeaver               ║
+-- ╚═══════════════════════════════════════════════════════════════════╝
 -- PAS UNE SONDE : à lancer dans DBeaver ou l'éditeur Supabase de la base
 -- Paynala. Elle dit à quelle étape la sonde de montant perd ses lignes.
 --

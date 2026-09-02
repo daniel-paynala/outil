@@ -1,3 +1,7 @@
+-- ╔═══════════════════════════════════════════════════════════════════╗
+-- ║  BASE : ARCHE  —  éditeur SQL du Supabase du projet Arche         ║
+-- ║  Tables : users, projects, monitoring_*, user_capabilities…       ║
+-- ╚═══════════════════════════════════════════════════════════════════╝
 -- Appels internes : appareils joignables par push VoIP.
 --
 -- À appliquer dans l'éditeur SQL de Supabase.

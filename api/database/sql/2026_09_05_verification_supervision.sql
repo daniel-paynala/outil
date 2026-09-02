@@ -1,3 +1,7 @@
+-- ╔═══════════════════════════════════════════════════════════════════╗
+-- ║  BASE : ARCHE  —  éditeur SQL du Supabase du projet Arche         ║
+-- ║  Tables : users, projects, monitoring_*, user_capabilities…       ║
+-- ╚═══════════════════════════════════════════════════════════════════╝
 -- Où en est l'installation de la supervision ?
 --
 -- À coller dans l'éditeur SQL de Supabase. Ne modifie rien : elle liste ce qui

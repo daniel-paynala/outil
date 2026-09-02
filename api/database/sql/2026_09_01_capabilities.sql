@@ -1,3 +1,7 @@
+-- ╔═══════════════════════════════════════════════════════════════════╗
+-- ║  BASE : ARCHE  —  éditeur SQL du Supabase du projet Arche         ║
+-- ║  Tables : users, projects, monitoring_*, user_capabilities…       ║
+-- ╚═══════════════════════════════════════════════════════════════════╝
 -- Droits accordés au cas par cas.
 --
 -- À appliquer dans l'éditeur SQL de Supabase.

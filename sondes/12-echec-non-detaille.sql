@@ -1,3 +1,8 @@
+-- ╔═══════════════════════════════════════════════════════════════════╗
+-- ║  BASE : PAYNALA  —  la base surveillée, pas celle d'Arche         ║
+-- ║  Tables : payment, merchant, airtel_logs, subscription…           ║
+-- ║  Où : console SQL d'Arche (Supervision), ou DBeaver               ║
+-- ╚═══════════════════════════════════════════════════════════════════╝
 -- Airtel refuse sans dire pourquoi.
 select count(*) as valeur
 from airtel_logs

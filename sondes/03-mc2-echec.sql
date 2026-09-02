@@ -1,3 +1,8 @@
+-- ╔═══════════════════════════════════════════════════════════════════╗
+-- ║  BASE : PAYNALA  —  la base surveillée, pas celle d'Arche         ║
+-- ║  Tables : payment, merchant, airtel_logs, subscription…           ║
+-- ║  Où : console SQL d'Arche (Supervision), ou DBeaver               ║
+-- ╚═══════════════════════════════════════════════════════════════════╝
 -- MC2 a répondu non — Rengus Digital uniquement.
 select count(*) as valeur
 from airtel_logs

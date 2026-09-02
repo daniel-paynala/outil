@@ -1,3 +1,8 @@
+-- ╔═══════════════════════════════════════════════════════════════════╗
+-- ║  BASE : PAYNALA  —  la base surveillée, pas celle d'Arche         ║
+-- ║  Tables : payment, merchant, airtel_logs, subscription…           ║
+-- ║  Où : console SQL d'Arche (Supervision), ou DBeaver               ║
+-- ╚═══════════════════════════════════════════════════════════════════╝
 -- MC n'a laissé aucun log — tous les marchands sauf Rengus Digital.
 select count(*) as valeur
 from payment p

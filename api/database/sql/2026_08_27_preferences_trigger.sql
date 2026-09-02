@@ -1,3 +1,7 @@
+-- ╔═══════════════════════════════════════════════════════════════════╗
+-- ║  BASE : ARCHE  —  éditeur SQL du Supabase du projet Arche         ║
+-- ║  Tables : users, projects, monitoring_*, user_capabilities…       ║
+-- ╚═══════════════════════════════════════════════════════════════════╝
 -- Application des préférences de notification à la source de la donnée.
 --
 -- ## Pourquoi un déclencheur plutôt qu'un `if` dans le code

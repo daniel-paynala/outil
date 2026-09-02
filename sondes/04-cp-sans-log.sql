@@ -1,3 +1,8 @@
+-- ╔═══════════════════════════════════════════════════════════════════╗
+-- ║  BASE : PAYNALA  —  la base surveillée, pas celle d'Arche         ║
+-- ║  Tables : payment, merchant, airtel_logs, subscription…           ║
+-- ║  Où : console SQL d'Arche (Supervision), ou DBeaver               ║
+-- ╚═══════════════════════════════════════════════════════════════════╝
 -- CP n'a laissé aucun log. Le seul cas qui exige la table payment : une
 -- ligne absente ne se compte pas dans la table où elle manque.
 select count(*) as valeur

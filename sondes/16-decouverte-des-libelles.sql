@@ -1,3 +1,8 @@
+-- ╔═══════════════════════════════════════════════════════════════════╗
+-- ║  BASE : PAYNALA  —  la base surveillée, pas celle d'Arche         ║
+-- ║  Tables : payment, merchant, airtel_logs, subscription…           ║
+-- ║  Où : console SQL d'Arche (Supervision), ou DBeaver               ║
+-- ╚═══════════════════════════════════════════════════════════════════╝
 -- PAS UNE SONDE : rend des lignes, pas un nombre. À lancer dans DBeaver ou
 -- l'éditeur Supabase pour connaître les libellés réels avant de figer les
 -- motifs des sondes 07 à 13.

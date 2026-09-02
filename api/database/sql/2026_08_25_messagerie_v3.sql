@@ -1,3 +1,7 @@
+-- ╔═══════════════════════════════════════════════════════════════════╗
+-- ║  BASE : ARCHE  —  éditeur SQL du Supabase du projet Arche         ║
+-- ║  Tables : users, projects, monitoring_*, user_capabilities…       ║
+-- ╚═══════════════════════════════════════════════════════════════════╝
 -- ─────────────────────────────────────────────────────────────────────────
 --  Arche — messagerie v3 : édition et accusés de lecture
 --  À exécuter dans l'éditeur SQL Supabase, après le v2.

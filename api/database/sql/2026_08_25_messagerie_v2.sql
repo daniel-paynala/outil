@@ -1,3 +1,7 @@
+-- ╔═══════════════════════════════════════════════════════════════════╗
+-- ║  BASE : ARCHE  —  éditeur SQL du Supabase du projet Arche         ║
+-- ║  Tables : users, projects, monitoring_*, user_capabilities…       ║
+-- ╚═══════════════════════════════════════════════════════════════════╝
 -- ─────────────────────────────────────────────────────────────────────────
 --  Arche — messagerie v2 : pièces jointes et temps réel
 --  À exécuter dans l'éditeur SQL Supabase, après 2026_08_25_messagerie.sql

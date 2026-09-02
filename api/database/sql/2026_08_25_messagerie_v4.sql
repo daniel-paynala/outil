@@ -1,3 +1,7 @@
+-- ╔═══════════════════════════════════════════════════════════════════╗
+-- ║  BASE : ARCHE  —  éditeur SQL du Supabase du projet Arche         ║
+-- ║  Tables : users, projects, monitoring_*, user_capabilities…       ║
+-- ╚═══════════════════════════════════════════════════════════════════╝
 -- ─────────────────────────────────────────────────────────────────────────
 --  Arche — messagerie v4 : réponse à un message
 --  À exécuter dans l'éditeur SQL Supabase, après le v3.
