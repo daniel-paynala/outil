@@ -119,15 +119,9 @@ class MonitoringProbe extends Model
      */
     public function isDue(): bool
     {
-        $cadence = max($this->interval_minutes ?? 1, 1);
-        if ($cadence <= 1) {
-            return true;
-        }
-
-        $dernier = $this->windows->max('last_run_at');
-
-        return $dernier === null
-            || $dernier->addMinutes($cadence)->lessThanOrEqualTo(now());
+        return $this->windows->contains(
+            fn (MonitoringProbeWindow $f) => $f->isDue($this->interval_minutes ?? 1),
+        );
     }
 
     public function hasOpenIncident(): bool

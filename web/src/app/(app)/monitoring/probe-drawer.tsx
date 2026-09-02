@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { Play, Plus, Trash2 } from "lucide-react";
 
 import { apiFetch } from "@/lib/api/client";
-import { ignoresHours } from "@/lib/monitoring/types";
+import { isPeriod } from "@/lib/monitoring/types";
 import { useToast } from "@/core/toast/toast-context";
 import type {
   Direction,
@@ -409,7 +409,11 @@ export default function ProbeDrawer({
                 trois cases nues dont on ne devinait pas le rôle.
               */}
               <div className="flex items-center gap-2 text-[11px] uppercase tracking-wider text-[var(--muted)]">
-                <span className="w-20 shrink-0">Durée</span>
+                <span className="w-20 shrink-0">
+                  {fenetres.every((f) => isPeriod(f.mode))
+                    ? "Recharge"
+                    : "Durée"}
+                </span>
                 <span className="w-32 shrink-0">Découpage</span>
                 <span className="w-28 shrink-0">Alerte si</span>
                 <span className="flex-1">Seuils</span>
@@ -444,13 +448,12 @@ export default function ProbeDrawer({
                           }),
                         )
                       }
-                      disabled={ignoresHours(fenetre.mode)}
                       title={
-                        ignoresHours(fenetre.mode)
-                          ? "Sans effet : la période est fixée par le découpage"
-                          : undefined
+                        isPeriod(fenetre.mode)
+                          ? "Toutes les combien d'heures recompter ce cumul"
+                          : "La période observée, en heures"
                       }
-                      className={`${inputClass} tabular-nums disabled:opacity-40`}
+                      className={`${inputClass} tabular-nums`}
                     />
                     <span className="text-xs text-[var(--muted)]">h</span>
                   </div>

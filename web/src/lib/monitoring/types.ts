@@ -47,8 +47,14 @@ export type MonitoredDatabase = {
 export type WindowMode =
   "glissante" | "calendaire" | "mensuelle" | "annuelle" | "totale";
 
-/** Les modes dont la durée en heures ne veut rien dire. */
-export function ignoresHours(mode: WindowMode | undefined): boolean {
+/**
+ * Les modes dont la période est fixée par le mode lui-même.
+ *
+ * Pour eux, `hours` ne décrit pas la période observée : il devient
+ * l'intervalle de rechargement. Le champ dit toujours la même chose sous deux
+ * formes — le nombre dont le mode a besoin.
+ */
+export function isPeriod(mode: WindowMode | undefined): boolean {
   return mode === "mensuelle" || mode === "annuelle" || mode === "totale";
 }
 

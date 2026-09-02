@@ -6,6 +6,8 @@
 -- Montant crédité, avec sa décomposition par portefeuille.
 --
 -- Fenêtre : mensuelle — depuis le 1er du mois
+-- Rechargement : 24 (le champ « Durée » sert d'intervalle pour ces modes)
+-- Délai : 45 secondes — mesuré à ~14,7 s sur un an d'airtel_logs
 -- Unité : « F CFA »
 -- Sens : croissant, des jalons — un cumul de période est forcément bas en début de période.
 --

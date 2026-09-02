@@ -674,7 +674,7 @@ class MonitoringRunnerTest extends TestCase
         // La colonne reste renseignée — elle est obligatoire — mais ne décide
         // plus rien. L'écran doit donc afficher la période, pas la durée.
         $this->fenetre->update(['mode' => 'mensuelle', 'hours' => 6]);
-        $this->assertTrue($this->fenetre->fresh()->ignoresHours());
+        $this->assertTrue($this->fenetre->fresh()->isPeriod());
         $this->assertSame('ce mois-ci', $this->fenetre->fresh()->periodLabel());
 
         $this->fenetre->update(['mode' => 'annuelle']);
@@ -853,5 +853,88 @@ class MonitoringRunnerTest extends TestCase
         $this->tourner(1);
 
         $this->assertNull($this->sonde->fresh()->last_error);
+    }
+
+    // ── `hours` comme intervalle de rechargement ────────────────────────
+
+    public function test_une_fenetre_de_periode_se_recharge_selon_ses_heures(): void
+    {
+        // L'idée de Daniel : pour « ce mois-ci », « cette année » et « depuis
+        // toujours », la période est fixée par le mode et `hours` ne servait à
+        // rien. Il devient l'intervalle de rechargement — « recompte le cumul
+        // annuel toutes les 24 heures ».
+        $this->fenetre->update(['mode' => 'annuelle', 'hours' => 24]);
+
+        $this->travelTo('2026-09-02 08:00:00');
+        $this->tourner(100);
+        $this->assertSame(100, $this->fenetre->fresh()->last_value);
+
+        $this->travelTo('2026-09-02 20:00:00');
+        $this->tourner(999);
+        $this->assertSame(100, $this->fenetre->fresh()->last_value, 'douze heures : trop tôt');
+
+        $this->travelTo('2026-09-03 08:30:00');
+        $this->tourner(999);
+        $this->assertSame(999, $this->fenetre->fresh()->last_value);
+    }
+
+    public function test_les_heures_restent_la_periode_observee_en_glissant(): void
+    {
+        // Le champ dit toujours la même chose sous deux formes : le nombre dont
+        // le mode a besoin. En glissante, c'est la période observée, et la
+        // cadence continue de venir de la sonde.
+        $this->fenetre->update(['mode' => 'glissante', 'hours' => 24]);
+        $this->travelTo('2026-09-02 08:00:00');
+
+        $this->tourner(1);
+        $this->assertSame('2026-09-01 08:00:00', $this->dernierDepuis);
+
+        // Vingt-quatre heures d'observation n'empêchent pas de relancer à la
+        // minute suivante.
+        $this->travelTo('2026-09-02 08:01:00');
+        $this->tourner(5);
+        $this->assertSame(5, $this->fenetre->fresh()->last_value);
+    }
+
+    public function test_deux_fenetres_d_une_sonde_ont_chacune_leur_cadence(): void
+    {
+        // Ce que la cadence par sonde ne savait pas faire : une même sonde
+        // portant une fenêtre vive et un cumul lourd.
+        $this->fenetre->update(['mode' => 'glissante', 'hours' => 1]);
+        $lourde = MonitoringProbeWindow::create([
+            'id' => (string) Str::uuid(),
+            'probe_id' => $this->sonde->id,
+            'hours' => 24,
+            'mode' => 'annuelle',
+            'tiers' => [1000],
+        ]);
+
+        $this->travelTo('2026-09-02 08:00:00');
+        $this->tourner(10, 10);
+
+        $this->travelTo('2026-09-02 08:05:00');
+        $this->tourner(77, 77);
+
+        $this->assertSame(77, $this->fenetre->fresh()->last_value, 'la vive suit');
+        $this->assertSame(10, $lourde->fresh()->last_value, 'la lourde attend son heure');
+    }
+
+    public function test_une_sonde_dont_rien_ne_tourne_garde_son_erreur(): void
+    {
+        // Effacer une erreur qu'aucune exécution n'a démentie la ferait
+        // disparaître de l'écran sans que rien ne l'ait résolue.
+        $this->fenetre->update([
+            'mode' => 'annuelle',
+            'hours' => 24,
+            'last_run_at' => now(),
+        ]);
+        $this->sonde->update(['last_error' => 'timeout de la nuit dernière']);
+
+        app(ProbeRunner::class)->runAll();
+
+        $this->assertSame(
+            'timeout de la nuit dernière',
+            $this->sonde->fresh()->last_error,
+        );
     }
 }

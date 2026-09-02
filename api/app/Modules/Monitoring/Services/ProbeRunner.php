@@ -71,7 +71,17 @@ class ProbeRunner
 
     public function run(MonitoringProbe $sonde): void
     {
+        $execute = false;
+
         foreach ($sonde->windows as $fenetre) {
+            // La cadence se décide fenêtre par fenêtre : une même sonde peut
+            // porter une fenêtre d'une heure à relancer chaque minute et un
+            // cumul annuel à recharger une fois par jour.
+            if (! $fenetre->isDue($sonde->interval_minutes ?? 1)) {
+                continue;
+            }
+
+            $execute = true;
             $depuis = $this->countingFrom($sonde, $fenetre);
 
             $lu = $this->connector->read(
@@ -105,7 +115,12 @@ class ProbeRunner
             $this->signaler($sonde, $fenetre, $palier, $valeur);
         }
 
-        $sonde->update(['last_error' => null]);
+        // Rien n'a tourné : on ne déclare pas pour autant que tout va bien.
+        // Effacer une erreur qu'aucune exécution n'a démentie la ferait
+        // disparaître de l'écran sans que rien ne l'ait résolue.
+        if ($execute) {
+            $sonde->update(['last_error' => null]);
+        }
     }
 
     /**
