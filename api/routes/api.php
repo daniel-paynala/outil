@@ -30,6 +30,7 @@ use App\Modules\Monitoring\Http\Controllers\QueueHealthController;
 use App\Modules\Monitoring\Http\Controllers\SearchHealthController;
 use App\Modules\Monitoring\Http\Controllers\ServerErrorsController;
 use App\Modules\Notifications\Http\Controllers\NotificationController;
+use App\Modules\Phones\Http\Controllers\PhoneLineController;
 use App\Modules\Roadmap\Http\Controllers\RoadmapController;
 use App\Modules\Search\Http\Controllers\SearchController;
 use App\Modules\Tasks\Http\Controllers\BoardController;
@@ -240,6 +241,16 @@ Route::middleware('supabase.auth')->group(function () {
     Route::post('docs/{page}/restore/{revision}', [DocController::class, 'restoreRevision']);
 
     // Vault (encrypted secrets + audit log)
+    // Le registre des lignes de l'entreprise. Ouvert à toute l'équipe, en
+    // lecture comme en écriture : un registre n'a de valeur que tenu à jour,
+    // et devoir passer par un administrateur pour corriger un numéro est le
+    // plus sûr moyen qu'il ne le soit jamais. La trace de qui a écrit quoi
+    // tient lieu de garde-fou.
+    Route::get('phone-lines', [PhoneLineController::class, 'index']);
+    Route::post('phone-lines', [PhoneLineController::class, 'store']);
+    Route::patch('phone-lines/{line}', [PhoneLineController::class, 'update']);
+    Route::delete('phone-lines/{line}', [PhoneLineController::class, 'destroy']);
+
     Route::get('projects/{project}/vault', [VaultController::class, 'index']);
     Route::post('projects/{project}/vault', [VaultController::class, 'store']);
     Route::get('vault/{entry}', [VaultController::class, 'show']);

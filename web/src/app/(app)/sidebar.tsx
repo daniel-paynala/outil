@@ -14,6 +14,7 @@ import {
   LogOut,
   Shield,
   ScrollText,
+  Smartphone,
   type LucideIcon,
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
@@ -61,6 +62,10 @@ export default function Sidebar({
   const nav: NavItem[] = [
     ...NAV,
     { href: "/monitoring", label: "Supervision", icon: Activity },
+    // Le registre des lignes de l'entreprise. Une entrée à part, et non sous
+    // l'administration : il est ouvert à toute l'équipe, et le ranger derrière
+    // un menu d'administrateur aurait démenti ce choix à chaque coup d'œil.
+    { href: "/phone-lines", label: "Numéros", icon: Smartphone },
     ...(isAdmin
       ? [
           { href: "/admin/users", label: "Utilisateurs", icon: Shield },
